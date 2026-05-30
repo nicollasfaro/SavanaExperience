@@ -1,0 +1,181 @@
+{
+  "entities": {
+    "courses": {
+      "title": "Course",
+      "description": "Premium online course item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier" },
+        "title": { "type": "string", "description": "Course title" },
+        "description": { "type": "string", "description": "In-depth summary" },
+        "category": { "type": "string" },
+        "instructorName": { "type": "string" },
+        "thumbnail": { "type": "string", "format": "uri" },
+        "price": { "type": "number" },
+        "xpReward": { "type": "integer" },
+        "totalDuration": { "type": "string" },
+        "modulesCount": { "type": "integer" },
+        "enrolledCount": { "type": "integer" },
+        "rating": { "type": "number" },
+        "isPublished": { "type": "boolean" }
+      },
+      "required": ["id", "title", "price", "xpReward"]
+    },
+    "modules": {
+      "title": "CourseModule",
+      "description": "Module within a course",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "courseId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "order": { "type": "integer" }
+      },
+      "required": ["id", "courseId", "title", "order"]
+    },
+    "progress": {
+      "title": "StudentProgress",
+      "description": "Progress of a single user in a course",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "courseId": { "type": "string" },
+        "progressPercentage": { "type": "number" },
+        "completedLessons": { "type": "array" },
+        "xp": { "type": "integer" },
+        "score": { "type": "number" }
+      },
+      "required": ["userId", "courseId", "progressPercentage"]
+    },
+    "badges": {
+      "title": "Badge",
+      "description": "Gamified badge entity",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "iconName": { "type": "string" },
+        "color": { "type": "string" },
+        "criteria": { "type": "string" }
+      },
+      "required": ["id", "name", "description"]
+    },
+    "leaderboard": {
+      "title": "LeaderboardUser",
+      "description": "Ranking record of students",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "avatar": { "type": "string", "format": "uri" },
+        "xp": { "type": "integer" },
+        "level": { "type": "integer" },
+        "badges": { "type": "array" },
+        "role": { "type": "string", "enum": ["student", "instructor"] }
+      },
+      "required": ["userId", "name", "xp", "level"]
+    },
+    "forumThreads": {
+      "title": "ForumThread",
+      "description": "Topic details in the forum",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "courseId": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorRole": { "type": "string", "enum": ["student", "instructor"] },
+        "createdAt": { "type": "string" },
+        "category": { "type": "string" },
+        "likes": { "type": "integer" }
+      },
+      "required": ["id", "title", "content", "authorId", "authorName"]
+    },
+    "chatMessages": {
+      "title": "ChatMessage",
+      "description": "Direct message in support chats",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderRole": { "type": "string", "enum": ["student", "instructor"] },
+        "message": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "senderId", "message", "createdAt"]
+    },
+    "payments": {
+      "title": "CourseRegistration",
+      "description": "Registration of standard transaction",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "courseId": { "type": "string" },
+        "paymentStatus": { "type": "string", "enum": ["completed", "pending"] },
+        "paymentMethod": { "type": "string" },
+        "amount": { "type": "number" },
+        "enrolledAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "courseId", "paymentStatus", "amount"]
+    },
+    "notifications": {
+      "title": "NotificationItem",
+      "description": "Push or educational indicator",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["progress", "course", "forum", "badge", "announcement"] },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "title", "message", "read"]
+    }
+  },
+  "firestore": {
+    "/courses/{courseId}": {
+      "schema": "courses",
+      "description": "Courses available"
+    },
+    "/courses/{courseId}/modules/{moduleId}": {
+      "schema": "modules",
+      "description": "Course modules"
+    },
+    "/progress/{progressId}": {
+      "schema": "progress",
+      "description": "Student tracking"
+    },
+    "/badges/{badgeId}": {
+      "schema": "badges",
+      "description": "Gamification badges"
+    },
+    "/leaderboard/{userId}": {
+      "schema": "leaderboard",
+      "description": "Leaderboard scores for gamification"
+    },
+    "/forumThreads/{threadId}": {
+      "schema": "forumThreads",
+      "description": "Discussion threads and support questions"
+    },
+    "/chatMessages/{chatId}": {
+      "schema": "chatMessages",
+      "description": "Tutoring and chat help logs"
+    },
+    "/payments/{paymentId}": {
+      "schema": "payments",
+      "description": "Ledger logs of acquisitions"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "notifications",
+      "description": "Push notification triggers"
+    }
+  }
+}

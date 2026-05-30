@@ -1,0 +1,5 @@
+Seu logo deve ser colocado nesta pasta para que apareça automaticamente em todo o site!
+
+1. Renomeie o arquivo de imagem do seu logo para: logo.png
+2. Faça o upload ou arraste o arquivo "logo.png" diretamente para esta pasta "/public" na barra lateral de arquivos do AI Studio.
+3. O site irá carregar a imagem real automaticamente e substituir o SVG de backup por ela!

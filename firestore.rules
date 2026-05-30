@@ -1,0 +1,215 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global Safety Net: Default Deny All
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- REUSABLE SECURITY PRIMITIVES ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == "ciuldinciuldin@gmail.com" ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // Verify instructor privilege
+    function isInstructor() {
+      return isSignedIn() && (
+        isAdmin() ||
+        exists(/databases/$(database)/documents/instructors/$(request.auth.uid)) ||
+        (exists(/databases/$(database)/documents/leaderboard/$(request.auth.uid)) && get(/databases/$(database)/documents/leaderboard/$(request.auth.uid)).data.role == 'instructor')
+      );
+    }
+
+    // --- COLLECTION MATCHES & SCHEMA VALIDATORS ---
+
+    // 1. COURSES
+    function isValidCourse(data) {
+      return data.keys().hasAll(['id', 'title', 'price', 'xpReward', 'isPublished'])
+        && data.id is string && data.id.size() <= 128
+        && data.title is string && data.title.size() <= 200
+        && data.price is number
+        && data.xpReward is number
+        && data.isPublished is bool;
+    }
+
+    match /courses/{courseId} {
+      allow get: if isValidId(courseId) && (existing().isPublished == true || isInstructor());
+      allow list: if isSignedIn(); // Filtered list
+      allow create: if isInstructor() && isValidCourse(incoming()) && incoming().id == courseId;
+      allow update: if isInstructor() && isValidCourse(incoming()) && incoming().id == courseId;
+      allow delete: if isInstructor();
+    }
+
+    // 2. COURSE MODULES
+    function isValidModule(data) {
+      return data.keys().hasAll(['id', 'courseId', 'title', 'order'])
+        && data.id is string && data.id.size() <= 128
+        && data.courseId is string && data.courseId.size() <= 128
+        && data.title is string && data.title.size() <= 200
+        && data.order is number;
+    }
+
+    match /courses/{courseId}/modules/{moduleId} {
+      allow get: if isSignedIn() && isValidId(courseId) && isValidId(moduleId);
+      allow list: if isSignedIn() && isValidId(courseId);
+      allow create: if isInstructor() && isValidModule(incoming()) && incoming().id == moduleId;
+      allow update: if isInstructor() && isValidModule(incoming()) && incoming().id == moduleId;
+      allow delete: if isInstructor();
+    }
+
+    // 3. STUDENT PROGRESS
+    function isValidProgress(data) {
+      return data.keys().hasAll(['userId', 'courseId', 'progressPercentage', 'completedLessons', 'xp', 'score'])
+        && data.userId == request.auth.uid
+        && data.courseId is string && data.courseId.size() <= 128
+        && data.progressPercentage is number
+        && data.completedLessons is list
+        && data.xp is number
+        && data.score is number;
+    }
+
+    match /progress/{progressId} {
+      allow get: if isSignedIn() && (existing().userId == request.auth.uid || isInstructor());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isInstructor());
+      allow create: if isSignedIn() && isValidProgress(incoming()) && incoming().userId == request.auth.uid;
+      allow update: if isSignedIn() && isValidProgress(incoming()) && (
+        incoming().userId == existing().userId &&
+        incoming().courseId == existing().courseId &&
+        incoming().diff(existing()).affectedKeys().hasAny(['progressPercentage', 'completedLessons', 'xp', 'score'])
+      );
+      allow delete: if isInstructor();
+    }
+
+    // 4. GAMIFICATION BADGES
+    match /badges/{badgeId} {
+      allow read: if isSignedIn() && isValidId(badgeId);
+      allow write: if isInstructor();
+    }
+
+    // 5. LEADERBOARD / USER PROFILES
+    function isValidLeaderboardUser(data) {
+      return data.keys().hasAll(['userId', 'name', 'xp', 'level', 'badges', 'role'])
+        && (data.userId == request.auth.uid || isInstructor())
+        && data.name is string && data.name.size() <= 100
+        && data.xp is number
+        && data.level is number
+        && data.badges is list
+        && (data.role == 'student' || data.role == 'instructor');
+    }
+
+    match /leaderboard/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(userId) && (userId == request.auth.uid || isInstructor());
+      allow update: if isSignedIn() && (
+        isInstructor() ||
+        (userId == request.auth.uid && incoming().role == existing().role)
+      );
+      allow delete: if isInstructor();
+    }
+
+    // 6. FORUM THREADS
+    function isValidThread(data) {
+      return data.keys().hasAll(['id', 'title', 'content', 'authorId', 'authorName', 'authorRole', 'createdAt', 'category', 'likes', 'replies'])
+        && data.id is string
+        && (data.authorId == request.auth.uid || isInstructor())
+        && data.title is string && data.title.size() <= 200
+        && data.content is string && data.content.size() <= 5000
+        && data.replies is list;
+    }
+
+    match /forumThreads/{threadId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidThread(incoming()) && incoming().id == threadId;
+      allow update: if isSignedIn() && (
+        // Standard student update: only reply additions or likes
+        isValidThread(incoming()) && (
+          incoming().authorId == existing().authorId &&
+          incoming().diff(existing()).affectedKeys().hasAny(['replies', 'likes'])
+        ) || isInstructor()
+      );
+      allow delete: if isSignedIn() && (existing().authorId == request.auth.uid || isInstructor());
+    }
+
+    // 7. SUPPORT CHAT MESSAGES
+    function isValidChatMessage(data) {
+      return data.keys().hasAll(['id', 'senderId', 'senderName', 'senderRole', 'message', 'createdAt'])
+        && data.id is string
+        && data.senderId == request.auth.uid
+        && (data.senderRole == 'student' || data.senderRole == 'instructor')
+        && data.message is string && data.message.size() <= 2000;
+    }
+
+    match /chatMessages/{chatId} {
+      allow read: if isSignedIn(); // Filtered by user context
+      allow create: if isSignedIn() && isValidChatMessage(incoming());
+      allow write: if isInstructor();
+    }
+
+    // 8. PAYMENT REGISTRATIONS
+    function isValidPayment(data) {
+      return data.keys().hasAll(['id', 'userId', 'courseId', 'paymentStatus', 'amount'])
+        && data.userId == request.auth.uid
+        && data.courseId is string
+        && (data.paymentStatus == 'completed' || data.paymentStatus == 'pending')
+        && data.amount is number;
+    }
+
+    match /payments/{paymentId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isInstructor());
+      allow create: if isSignedIn() && isValidPayment(incoming());
+      allow update: if isInstructor();
+      allow delete: if isInstructor();
+    }
+
+    // 9. AUTOMATED NOTIFICATIONS
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isInstructor());
+      allow create: if isInstructor(); // System created only, or automated function trigger
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['read']);
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // 10. INSTRUCTORS ASSIGNMENT
+    match /instructors/{instructorId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (instructorId == request.auth.uid || isInstructor());
+    }
+
+    // 11. TURMAS / COHORTS / CLASSES
+    match /turmas/{turmaId} {
+      allow read: if isSignedIn();
+      allow write: if isInstructor();
+    }
+
+    // 12. CLASSROOM SESSIONS
+    match /classroomSessions/{sessionId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // 13. SYSTEM ADMINS
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}
