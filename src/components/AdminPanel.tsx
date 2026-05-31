@@ -120,18 +120,6 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
 
   // Filter candidates for instructor selection
   const instructors = allUsers.filter(u => u.role === 'instructor');
-  // Seeder placeholder for candidate teachers if not seeded
-  if (!instructors.some(u => u.userId === 'course-1-teacher')) {
-    instructors.push({
-      userId: 'course-1-teacher',
-      name: 'Dr. Gabriel Silva (M.V.)',
-      avatar: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=150&auto=format&fit=crop&q=80',
-      xp: 6000,
-      level: 10,
-      badges: [],
-      role: 'instructor'
-    });
-  }
 
   // Filters search term by name or email
   const filteredUsers = allUsers.filter(user => {
@@ -154,7 +142,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
   });
 
   const handleDeleteUser = async (user: LeaderboardUser) => {
-    if (user.userId === 'course-1-teacher' || user.email === 'ciuldinciuldin@gmail.com') {
+    if (user.email === 'ciuldinciuldin@gmail.com') {
       showToast("Este usuário é protegido pelo sistema e não pode ser excluído.", "info");
       return;
     }
@@ -179,11 +167,6 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
   };
 
   const handleToggleRole = async (user: LeaderboardUser) => {
-    if (user.userId === 'course-1-teacher') {
-      showToast("Este é o professor padrão simulado predefinido e não pode ter seu cargo alterado.", "info");
-      return;
-    }
-    
     setUpdatingUserId(user.userId);
     const newRole = user.role === 'instructor' ? 'student' : 'instructor';
     try {
@@ -836,7 +819,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                           <div className="flex items-center justify-end gap-2">
                             <button
                               id={`toggle-role-${user.userId}`}
-                              disabled={updatingUserId === user.userId || user.userId === 'course-1-teacher' || user.email === 'ciuldinciuldin@gmail.com'}
+                              disabled={updatingUserId === user.userId || user.email === 'ciuldinciuldin@gmail.com'}
                               onClick={() => handleToggleRole(user)}
                               className={`text-[10px] uppercase font-mono font-bold tracking-wider px-3.5 py-1.5 rounded-lg transition-all ${
                                 user.role === 'instructor'
@@ -875,7 +858,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                             )}
                             <button
                               id={`delete-user-${user.userId}`}
-                              disabled={updatingUserId === user.userId || user.userId === 'course-1-teacher' || user.email === 'ciuldinciuldin@gmail.com'}
+                              disabled={updatingUserId === user.userId || user.email === 'ciuldinciuldin@gmail.com'}
                               onClick={() => handleDeleteUser(user)}
                               className="p-1.5 bg-slate-900 border border-slate-850 text-slate-400 hover:text-red-400 hover:border-red-500/30 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
                               title="Excluir Usuário"

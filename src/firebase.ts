@@ -182,16 +182,6 @@ class StorageEngine {
             // Only attempt to seed instructor profiles if they are indeed the admin or an instructor
             if (isAdminEmail) {
               try {
-                await setDoc(doc(db, 'instructors', 'course-1-teacher'), {
-                  id: 'course-1-teacher',
-                  userId: 'course-1-teacher',
-                  name: 'Dr. Gabriel Silva (M.V.)'
-                }, { merge: true });
-              } catch (e) {
-                console.warn('Teacher seeding skipped:', e);
-              }
-
-              try {
                 await setDoc(doc(db, 'instructors', user.uid), {
                   id: user.uid,
                   userId: user.uid,

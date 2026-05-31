@@ -56,7 +56,7 @@ export function SupportChat({ currentUserId, currentUserName, currentUserRole }:
       setTimeout(() => {
         const tutorReply: ChatMessage = {
           id: `msg-${Date.now() + 1}`,
-          senderId: 'course-1-teacher',
+          senderId: 'tutor-support-system',
           senderName: 'Dr. Gabriel (Tutor)',
           senderRole: 'instructor',
           message: `Obrigado pelo seu contato médico! Analisei sua questão clínica sobre "${text.slice(0, 30)}...". Nossos clínicos plantonistas darão um parecer completo no suporte em instantes. Enquanto isso, verifique os novos casos no Fórum!`,

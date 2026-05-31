@@ -861,7 +861,7 @@ export default function App() {
 
   if (!authUser) {
     return (
-      <div className={`min-h-screen flex items-center justify-center p-4 transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
+      <div className={`min-h-screen flex flex-col items-center justify-center p-4 transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
         <div className={`${showRegisterForm ? 'max-w-lg' : 'max-w-md'} w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center shadow-2xl relative overflow-hidden transition-all duration-300`}>
           {/* Accent Glow */}
           <div className="absolute -top-24 -left-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -1102,6 +1102,22 @@ export default function App() {
             </p>
           </div>
         </div>
+
+        {/* Guest Validation Access */}
+        <button
+          onClick={() => setShowCertificateValidator(true)}
+          className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 border border-slate-800 hover:border-slate-700 hover:bg-slate-850 text-slate-300 hover:text-white rounded-full text-xs font-semibold shadow-lg transition duration-205 cursor-pointer"
+        >
+          <Award size={14} className="text-emerald-450 text-emerald-400" />
+          <span>Validar Autenticidade de Certificado</span>
+        </button>
+
+        {showCertificateValidator && (
+          <CertificateValidator
+            isOpen={showCertificateValidator}
+            onClose={() => setShowCertificateValidator(false)}
+          />
+        )}
       </div>
     );
   }
