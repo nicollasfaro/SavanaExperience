@@ -210,5 +210,15 @@ export interface IssuedCertificate {
   issuedAt: string;
 }
 
+export interface PreRegistration {
+  id: string;
+  email: string;
+  courseIds: string[];
+  used: boolean;
+  usedBy?: string;
+  usedAt?: string;
+  createdAt: string;
+}
+
 
 

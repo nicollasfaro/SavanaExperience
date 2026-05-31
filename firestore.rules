@@ -176,7 +176,7 @@ service cloud.firestore {
 
     match /payments/{paymentId} {
       allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isInstructor());
-      allow create: if isSignedIn() && isValidPayment(incoming());
+      allow create: if isSignedIn() && (request.resource.data.userId == request.auth.uid || isInstructor());
       allow update: if isInstructor();
       allow delete: if isInstructor();
     }
@@ -198,7 +198,13 @@ service cloud.firestore {
     // 11. TURMAS / COHORTS / CLASSES
     match /turmas/{turmaId} {
       allow read: if isSignedIn();
-      allow write: if isInstructor();
+      allow create, delete: if isInstructor();
+      allow update: if isInstructor() || (
+        isSignedIn() &&
+        request.resource.data.courseId == resource.data.courseId &&
+        (!('studentIds' in resource.data) || request.resource.data.studentIds.hasAll(resource.data.studentIds)) &&
+        request.resource.data.studentIds.hasAll([request.auth.uid])
+      );
     }
 
     // 12. CLASSROOM SESSIONS
@@ -256,6 +262,13 @@ service cloud.firestore {
       allow read: if true;
       allow create: if isSignedIn() && (incoming().userId == request.auth.uid || isInstructor());
       allow update, delete: if isInstructor();
+    }
+
+    // 18. PRE REGISTRATIONS (WhatsApp pre-sales tracking)
+    match /preRegistrations/{preId} {
+      allow get: if true;
+      allow create, delete, list: if isInstructor();
+      allow update: if isInstructor() || (isSignedIn() && (preId.lower() == request.auth.token.email.lower() || incoming().usedBy == request.auth.uid));
     }
   }
 }

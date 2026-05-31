@@ -3,12 +3,12 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import { collection, getDocs } from 'firebase/firestore';
 import Cropper from 'react-easy-crop';
 import { getCroppedImg } from '../lib/cropUtils';
-import { LeaderboardUser, Course, Turma } from '../types';
+import { LeaderboardUser, Course, Turma, PreRegistration } from '../types';
 import { localDB, uploadCourseThumbnail, auth, db } from '../firebase';
 import { 
   Shield, User, UserCheck, UserX, Search, Mail, Award, Sparkles, Filter,
   Plus, Edit, Trash2, Calendar, BookOpen, Layers, Users, Upload, Image, Loader2,
-  Database, RefreshCw, CheckCircle2, AlertCircle, AlertTriangle, X, FileText
+  Database, RefreshCw, CheckCircle2, AlertCircle, AlertTriangle, X, FileText, UserPlus
 } from 'lucide-react';
 import { CertificateSettingsPanel } from './CertificateSettingsPanel';
 
@@ -21,7 +21,7 @@ interface AdminPanelProps {
 
 export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: initialCourses }: AdminPanelProps) {
   // Navigation tabs state
-  const [adminTab, setAdminTab] = useState<'users' | 'turmas' | 'courses' | 'sync' | 'rewards' | 'finance' | 'certificates'>('users');
+  const [adminTab, setAdminTab] = useState<'users' | 'turmas' | 'courses' | 'sync' | 'rewards' | 'finance' | 'certificates' | 'pre-register'>('users');
 
   // 1. Users management states
   const [searchTerm, setSearchTerm] = useState('');
@@ -83,8 +83,19 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
   const [rewardXpCost, setRewardXpCost] = useState(0);
   const [rewardStock, setRewardStock] = useState(0);
 
+  // 5. Pre-registrations WhatsApp states
+  const [preRegistrations, setPreRegistrations] = useState<PreRegistration[]>(() => localDB.getPreRegistrations());
+  const [preEmail, setPreEmail] = useState('');
+  const [preCourseIds, setPreCourseIds] = useState<string[]>([]);
+  const [preSearchTerm, setPreSearchTerm] = useState('');
+  const [isSavingPre, setIsSavingPre] = useState(false);
+
   // Toast notifications for a smooth experience without blocking alerts
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  const confirm = (title: string, description: string, confirmText: string, onConfirm: () => void) => {
+    setConfirmConfig({ title, description, confirmText, onConfirm });
+  };
 
   const [confirmConfig, setConfirmConfig] = useState<{
     title: string;
@@ -111,10 +122,14 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
     const unsubRewards = localDB.onChange('rewards', () => {
       setRewards(localDB.getRewards());
     });
+    const unsubPre = localDB.onChange('preRegistrations', () => {
+      setPreRegistrations(localDB.getPreRegistrations());
+    });
     return () => {
       unsubTurmas();
       unsubCourses();
       unsubRewards();
+      unsubPre();
     };
   }, []);
 
@@ -430,6 +445,63 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
     });
   };
 
+  // --- WhatsApp Pre-Registration Actions ---
+  const handleSavePreRegistration = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!preEmail.trim()) {
+      showToast("Por favor, informe o e-mail do aluno.", "error");
+      return;
+    }
+    const cleanMail = preEmail.trim().toLowerCase();
+    
+    // Validate email format basic regex
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanMail)) {
+      showToast("Por favor, insira um e-mail com formato válido.", "error");
+      return;
+    }
+
+    if (preCourseIds.length === 0) {
+      showToast("Selecione pelo menos um curso para conceder pré-acesso.", "error");
+      return;
+    }
+
+    setIsSavingPre(true);
+    try {
+      const preData: PreRegistration = {
+        id: cleanMail,
+        email: cleanMail,
+        courseIds: preCourseIds,
+        used: false,
+        createdAt: new Date().toISOString()
+      };
+      await localDB.savePreRegistration(preData);
+      showToast(`E-mail ${cleanMail} pré-registrado com sucesso!`, "success");
+      setPreEmail('');
+      setPreCourseIds([]);
+    } catch (err: any) {
+      showToast("Erro ao salvar pré-registro: " + (err.message || String(err)), "error");
+    } finally {
+      setIsSavingPre(false);
+    }
+  };
+
+  const handleDeletePreRegistration = async (docId: string) => {
+    confirm(
+      "Remover Pré-registro",
+      `Deseja realmente remover o pré-registro de ${docId}? O aluno perderá o direito a auto-enrollment caso ainda não tenha cadastrado sua senha.`,
+      "Deletar",
+      async () => {
+        setConfirmConfig(null);
+        try {
+          await localDB.deletePreRegistration(docId);
+          showToast("Pré-registro removido!");
+        } catch (err: any) {
+          showToast("Falha ao deletar: " + (err.message || String(err)), "error");
+        }
+      }
+    );
+  };
+
   // Drag and Drop & File Upload handlers
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -661,6 +733,19 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
         >
           <FileText size={14} />
           Configurar Certificados
+        </button>
+
+        <button
+          id="admin-tab-pre-register"
+          onClick={() => setAdminTab('pre-register')}
+          className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg transition ${
+            adminTab === 'pre-register' 
+              ? 'bg-blue-500 text-slate-100 font-bold shadow-md' 
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <UserPlus size={14} />
+          Pré-Registro WhatsApp
         </button>
 
         <button
@@ -1802,6 +1887,204 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
       {/* TAB 6: CERTIFICATE CUSTOMIZATION SETTINGS */}
       {adminTab === 'certificates' && (
         <CertificateSettingsPanel />
+      )}
+
+      {/* TAB 7: WHATSAPP PRE-REGISTRATION SYSTEM */}
+      {adminTab === 'pre-register' && (
+        <div className="space-y-6">
+          {/* Top Info Banner */}
+          <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4 flex gap-3 text-left">
+            <UserPlus size={20} className="text-blue-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <h4 className="font-display font-semibold text-slate-105 text-slate-100 text-sm">Painel de Pré-Registro Administrativo</h4>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Esta área permite pré-aprovar alunos que compraram cursos diretamente pelo <strong>WhatsApp</strong> e ainda não têm conta no aplicativo. 
+                Ao incluir o e-mail do aluno e vincular seus cursos devidos, o sistema aguardará seu primeiro acesso. 
+                Quando ele digitar seu e-mail na tela de login, o app detectará o pré-registro e solicitará a criação de sua senha de acesso, liberando os cursos imediatamente.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 text-left">
+            {/* Form Section */}
+            <div className="lg:col-span-1 bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-sm h-fit">
+              <h3 className="font-display font-medium text-slate-100 text-sm border-b border-slate-800 pb-2">Novo Pré-Registro</h3>
+              
+              <form onSubmit={handleSavePreRegistration} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] uppercase font-mono tracking-wider text-slate-400">E-mail do Aluno *</label>
+                  <input
+                    type="email"
+                    required
+                    value={preEmail}
+                    onChange={(e) => setPreEmail(e.target.value)}
+                    placeholder="aluno@exemplo.com"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-[10px] uppercase font-mono tracking-wider text-slate-400">Vincular Cursos Autorizados *</label>
+                  <div className="space-y-2 max-h-[220px] overflow-y-auto bg-slate-950 border border-slate-850 rounded-xl p-3 scrollbar-thin">
+                    {adminCourses.map((c) => {
+                      const isChecked = preCourseIds.includes(c.id);
+                      return (
+                        <label key={c.id} className="flex items-start gap-2.5 hover:bg-slate-900/60 p-1.5 rounded-lg cursor-pointer transition text-xs text-slate-200">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {
+                              if (isChecked) {
+                                setPreCourseIds(preCourseIds.filter(id => id !== c.id));
+                              } else {
+                                setPreCourseIds([...preCourseIds, c.id]);
+                              }
+                            }}
+                            className="mt-0.5 w-4 h-4 text-blue-500 bg-slate-900 border-slate-800 rounded focus:ring-blue-500 shrink-0"
+                          />
+                          <div>
+                            <p className="font-semibold text-slate-200">{c.title}</p>
+                            <span className="text-[10px] text-slate-500 font-mono">ID: {c.id}</span>
+                          </div>
+                        </label>
+                      );
+                    })}
+                    {adminCourses.length === 0 && (
+                      <p className="text-center text-[11px] text-slate-500 font-mono py-2">Nenhum curso cadastrado ainda.</p>
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSavingPre}
+                  className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-blue-800 text-slate-950 font-bold text-xs py-2.5 px-4 rounded-xl transition duration-200 cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  {isSavingPre ? (
+                    <>
+                      <Loader2 className="animate-spin w-4 h-4" />
+                      <span>Salvando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={14} />
+                      <span>Pré-Registrar E-mail</span>
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+
+            {/* List Table Section */}
+            <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-sm flex flex-col">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                <div>
+                  <h3 className="font-display font-medium text-slate-100 text-sm">Matrículas Pré-Aprovadas</h3>
+                  <p className="text-[10px] text-slate-500">Histórico de e-mails aguardando ou que já realizaram cadastro.</p>
+                </div>
+
+                <div className="relative w-full sm:w-60">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500">
+                    <Search size={14} />
+                  </span>
+                  <input
+                    type="text"
+                    value={preSearchTerm}
+                    onChange={(e) => setPreSearchTerm(e.target.value)}
+                    placeholder="Filtrar por e-mail..."
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-1.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500 transition"
+                  />
+                </div>
+              </div>
+
+              {/* Table Container */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-[10px] uppercase font-mono tracking-wider text-slate-500">
+                      <th className="py-2.5 px-3">E-mail do Aluno</th>
+                      <th className="py-2.5 px-3">Cursos Permitidos</th>
+                      <th className="py-2.5 px-3">Data</th>
+                      <th className="py-2.5 px-3">Status</th>
+                      <th className="py-2.5 px-3 text-right">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-850/50">
+                    {preRegistrations
+                      .filter(p => !preSearchTerm || p.email.toLowerCase().includes(preSearchTerm.toLowerCase()))
+                      .map((p) => {
+                        const formattedDate = p.createdAt ? new Date(p.createdAt).toLocaleDateString('pt-BR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric'
+                        }) : '-';
+                        
+                        return (
+                          <tr key={p.id} className="text-xs hover:bg-slate-950/40 transition">
+                            <td className="py-3 px-3 font-semibold text-slate-100 max-w-[170px] truncate" title={p.email}>
+                              {p.email}
+                            </td>
+                            <td className="py-3 px-3">
+                              <div className="flex flex-col gap-1 max-w-[200px]">
+                                {p.courseIds?.map((cid) => {
+                                  const courseObj = adminCourses.find(ac => ac.id === cid);
+                                  return (
+                                    <span key={cid} className="bg-slate-950 text-slate-400 px-1.5 py-0.5 rounded text-[10px] font-mono border border-slate-850 truncate" title={courseObj?.title || cid}>
+                                      • {courseObj ? courseObj.title : cid}
+                                    </span>
+                                  );
+                                })}
+                                {(!p.courseIds || p.courseIds.length === 0) && (
+                                  <span className="text-slate-500 italic">Sem cursos</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-3 px-3 font-mono text-[10px] text-slate-400">
+                              {formattedDate}
+                            </td>
+                            <td className="py-3 px-3">
+                              {p.used ? (
+                                <div className="space-y-0.5">
+                                  <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider">
+                                    Ativo
+                                  </span>
+                                  {p.usedAt && (
+                                    <p className="text-[8px] text-slate-500 font-mono">
+                                      Ativado: {new Date(p.usedAt).toLocaleDateString('pt-BR')}
+                                    </p>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider">
+                                  Pendente
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 text-right">
+                              <button
+                                type="button"
+                                onClick={() => handleDeletePreRegistration(p.id)}
+                                className="p-1 px-2.5 rounded-lg hover:bg-red-500/10 text-red-400 hover:text-red-350 font-bold text-[10px] border border-transparent hover:border-red-500/20 transition cursor-pointer"
+                              >
+                                Revogar
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    {preRegistrations.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-xs text-slate-500 font-mono">
+                          Nenhum e-mail pré-registrado na base ainda.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Modal de confirmação geral estilizado com Tailwind */}

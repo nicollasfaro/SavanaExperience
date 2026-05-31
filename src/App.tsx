@@ -126,6 +126,37 @@ export default function App() {
   const [authFormLoading, setAuthFormLoading] = useState(false);
   const [authFormError, setAuthFormError] = useState<string | null>(null);
 
+  // Pre-registration dynamic checking states
+  const [isPreRegistered, setIsPreRegistered] = useState(false);
+  const [preRegisteredCourses, setPreRegisteredCourses] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!emailForm) {
+      setIsPreRegistered(false);
+      setPreRegisteredCourses([]);
+      return;
+    }
+    const cleanMail = emailForm.trim().toLowerCase();
+    const checkMail = async () => {
+      try {
+        const docSnap = await localDB.fetchPreRegistrationForEmail(cleanMail);
+        if (docSnap && !docSnap.used) {
+          setIsPreRegistered(true);
+          setPreRegisteredCourses(docSnap.courseIds);
+          // Auto-toggle to register form so that they set a password
+          setShowRegisterForm(true);
+        } else {
+          setIsPreRegistered(false);
+          setPreRegisteredCourses([]);
+        }
+      } catch (err) {
+        console.warn("Pre-register check failed:", err);
+      }
+    };
+    const timer = setTimeout(checkMail, 450);
+    return () => clearTimeout(timer);
+  }, [emailForm]);
+
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthFormLoading(true);
@@ -940,6 +971,24 @@ export default function App() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
                 <span>{authFormError}</span>
+              </div>
+            )}
+
+            {/* PRE-REGISTRATION WELCOME DISPLAY */}
+            {isPreRegistered && (
+              <div className="bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs text-left p-4 rounded-xl flex items-start gap-2.5 animate-fade-in">
+                <svg className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="space-y-1">
+                  <p className="font-bold text-slate-100 leading-tight">Matrícula Pré-Registrada Encontrada!</p>
+                  <p className="text-[11px] text-slate-300 leading-normal">
+                    Seu e-mail foi pré-cadastrado na nossa base através do suporte WhatsApp.
+                  </p>
+                  <p className="text-[11px] font-semibold text-emerald-400">
+                    Defina seu nome e crie uma senha abaixo para ativar seu painel de estudos!
+                  </p>
+                </div>
               </div>
             )}
 

@@ -165,6 +165,21 @@
         "createdAt": { "type": "string" }
       },
       "required": ["id", "userId", "title", "message", "read"]
+    },
+    "preRegistrations": {
+      "title": "PreRegistration",
+      "description": "Student email pre-sales registration with course access map",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "courseIds": { "type": "array" },
+        "used": { "type": "boolean" },
+        "usedBy": { "type": "string" },
+        "usedAt": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "email", "courseIds", "used", "createdAt"]
     }
   },
   "firestore": {
@@ -211,6 +226,10 @@
     "/notifications/{notificationId}": {
       "schema": "notifications",
       "description": "Push notification triggers"
+    },
+    "/preRegistrations/{preId}": {
+      "schema": "preRegistrations",
+      "description": "Student pre-sales register with course access grant configuration mapping list"
     }
   }
 }
