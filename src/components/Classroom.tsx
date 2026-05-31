@@ -511,6 +511,25 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
 
   const handleTerminateLiveRoomConfirm = async () => {
     if (!selectedModuleForRoom) return;
+
+    // Auto-complete this live module's lesson for all present students in the room
+    const presentStudents = session?.participants?.filter(p => p.role === 'student') || [];
+    const liveSessionLessonId = `live-session-${selectedModuleForRoom.id}`;
+
+    for (const student of presentStudents) {
+      try {
+        await localDB.completeLessonForUser(
+          student.userId,
+          selectedModuleForRoom.courseId,
+          liveSessionLessonId,
+          200 // 200 XP reward for attending the live class
+        );
+        console.log(`Auto-completed live lesson ${liveSessionLessonId} for student ${student.userId}`);
+      } catch (err) {
+        console.warn(`Failed to auto-complete live lesson for student ${student.userId}:`, err);
+      }
+    }
+
     const updatedModule = {
       ...selectedModuleForRoom,
       isLive: false,
@@ -523,7 +542,7 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
     setSelectedModuleForRoom(null);
     setLocalSpotlightId(null);
     setShowTerminateLiveConfirm(false);
-    triggerToast("Aula ao vivo finalizada com sucesso!");
+    triggerToast("Aula ao vivo finalizada e presença de todos os alunos registrada!");
   };
 
   const handleLeaveRoom = async () => {

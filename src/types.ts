@@ -33,6 +33,13 @@ export interface Course {
   saleType?: 'website' | 'whatsapp';
   whatsappNumber?: string;
   showStudentsCount?: boolean;
+  showBenefits?: boolean;
+  benefit1Title?: string;
+  benefit1Desc?: string;
+  benefit2Title?: string;
+  benefit2Desc?: string;
+  benefit3Title?: string;
+  benefit3Desc?: string;
 }
 
 export interface CourseModule {

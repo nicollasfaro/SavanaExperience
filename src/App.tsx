@@ -1847,33 +1847,35 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2 font-sans">
-                      <div className="bg-slate-950/60 border border-slate-850 p-5 rounded-2xl space-y-4">
-                        <h4 className="font-display font-medium text-xs uppercase tracking-wider text-emerald-400 font-mono">✨ Benefícios Inclusos na Matrícula</h4>
-                        <ul className="text-xs text-slate-350 space-y-3">
-                          <li className="flex items-start gap-2.5">
-                            <span className="text-emerald-500 text-sm mt-0.5">✔</span>
-                            <div>
-                              <strong className="text-slate-200 block">Encontros Síncronos / Aulas ao Vivo</strong>
-                              Aprenda em tempo real pelo painel interativo com câmeras e quadro negro do professor.
-                            </div>
-                          </li>
-                          <li className="flex items-start gap-2.5">
-                            <span className="text-emerald-500 text-sm mt-0.5">✔</span>
-                            <div>
-                              <strong className="text-slate-200 block">Grade Curricular Pedagógica</strong>
-                              Selecione e assista aulas em vídeo, leia apostilas digitais e realize simulados.
-                            </div>
-                          </li>
-                          <li className="flex items-start gap-2.5">
-                            <span className="text-emerald-500 text-sm mt-0.5">✔</span>
-                            <div>
-                              <strong className="text-slate-200 block">Quizzes de Fixação com XP</strong>
-                              Gabarite os testes práticos de cada módulo pedagógico para acumular pontos de XP.
-                            </div>
-                          </li>
-                        </ul>
-                      </div>
+                    <div className={`grid grid-cols-1 ${selectedCourse.showBenefits ? 'md:grid-cols-2' : ''} gap-6 pt-2 font-sans`}>
+                      {selectedCourse.showBenefits && (
+                        <div className="bg-slate-950/60 border border-slate-850 p-5 rounded-2xl space-y-4">
+                          <h4 className="font-display font-medium text-xs uppercase tracking-wider text-emerald-400 font-mono">✨ Benefícios Inclusos na Matrícula</h4>
+                          <ul className="text-xs text-slate-350 space-y-3">
+                            <li className="flex items-start gap-2.5">
+                              <span className="text-emerald-500 text-sm mt-0.5">✔</span>
+                              <div>
+                                <strong className="text-slate-200 block">{selectedCourse.benefit1Title || 'Encontros Síncronos / Aulas ao Vivo'}</strong>
+                                {selectedCourse.benefit1Desc || 'Aprenda em tempo real pelo painel interativo com câmeras e quadro negro do professor.'}
+                              </div>
+                            </li>
+                            <li className="flex items-start gap-2.5">
+                              <span className="text-emerald-500 text-sm mt-0.5">✔</span>
+                              <div>
+                                <strong className="text-slate-200 block">{selectedCourse.benefit2Title || 'Grade Curricular Pedagógica'}</strong>
+                                {selectedCourse.benefit2Desc || 'Selecione e assista aulas em vídeo, leia apostilas digitais e realize simulados.'}
+                              </div>
+                            </li>
+                            <li className="flex items-start gap-2.5">
+                              <span className="text-emerald-500 text-sm mt-0.5">✔</span>
+                              <div>
+                                <strong className="text-slate-200 block">{selectedCourse.benefit3Title || 'Quizzes de Fixação com XP'}</strong>
+                                {selectedCourse.benefit3Desc || 'Gabarite os testes práticos de cada módulo pedagógico para acumular pontos de XP.'}
+                              </div>
+                            </li>
+                          </ul>
+                        </div>
+                      )}
 
                       <div className="flex flex-col justify-between bg-slate-950/30 border border-slate-850/80 p-5 rounded-2xl">
                         <div className="space-y-3">
@@ -2189,7 +2191,18 @@ export default function App() {
                 {/* Certificate Banner (if course concluded 100%) */}
                 {(() => {
                   const courseModules = modules.filter(m => m.courseId === selectedCourse.id);
-                  const lessons = courseModules.flatMap(m => m.isLive ? [] : (m.lessons || []));
+                  const lessons = courseModules.flatMap(m => m.isLive 
+                    ? [{ 
+                        id: `live-session-${m.id}`, 
+                        moduleId: m.id, 
+                        title: `Aula Ao Vivo: ${m.title}`, 
+                        description: m.description, 
+                        order: 1, 
+                        duration: '1h', 
+                        type: 'video' 
+                      } as any] 
+                    : (m.lessons || [])
+                  );
                   const prog = userProgress.find(p => p.courseId === selectedCourse.id);
                   const completedLessonsCount = lessons.filter(l => prog?.completedLessons.includes(l.id)).length;
                   const totalLessonsCount = lessons.length;
@@ -2243,25 +2256,35 @@ export default function App() {
                   </h4>
 
                   <div className="space-y-4 text-left">
-                    {localDB.getModules().filter(m => m.courseId === selectedCourse.id).map(mod => (
-                      <div key={mod.id} className="space-y-2 border-b border-slate-900/60 pb-3 last:border-none">
-                        <div className="space-y-1">
-                          <span className="block text-[10px] uppercase font-mono tracking-wider font-semibold text-emerald-400">
-                            {mod.title}
-                          </span>
-                          {mod.isLive && (
-                            <div className="flex flex-col gap-0.5 mt-1">
-                              <span className="inline-flex items-center gap-1 text-[9px] bg-red-500/15 text-red-400 border border-red-500/20 font-bold px-2 py-0.5 rounded font-mono uppercase w-fit animate-pulse">
-                                🔴 Aula Ao Vivo
-                              </span>
-                              {mod.liveDate && (
-                                <span className="text-[10px] text-slate-400 font-mono font-medium block">
-                                  📅 Começa em: {new Date(mod.liveDate).toLocaleString('pt-BR')}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                    {localDB.getModules().filter(m => m.courseId === selectedCourse.id).map(mod => {
+                      const prog = userProgress.find(p => p.courseId === selectedCourse.id);
+                      const isLiveCompleted = mod.isLive && prog?.completedLessons.includes(`live-session-${mod.id}`);
+
+                      return (
+                        <div key={mod.id} className="space-y-2 border-b border-slate-900/60 pb-3 last:border-none">
+                          <div className="space-y-1">
+                            <span className="block text-[10px] uppercase font-mono tracking-wider font-semibold text-emerald-400">
+                              {mod.title}
+                            </span>
+                            {mod.isLive && (
+                              <div className="flex flex-col gap-0.5 mt-1">
+                                {isLiveCompleted ? (
+                                  <span className="inline-flex items-center gap-1 text-[9px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 font-bold px-2 py-0.5 rounded font-mono uppercase w-fit">
+                                    ✓ Presença Registrada & Aula Concluída
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-[9px] bg-red-500/15 text-red-400 border border-red-500/20 font-bold px-2 py-0.5 rounded font-mono uppercase w-fit animate-pulse">
+                                    🔴 Aula Ao Vivo
+                                  </span>
+                                )}
+                                {mod.liveDate && (
+                                  <span className="text-[10px] text-slate-400 font-mono font-medium block">
+                                    📅 Começa em: {new Date(mod.liveDate).toLocaleString('pt-BR')}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         
                         <div className="space-y-2 pt-1.5">
                           {mod.isLive ? (
@@ -2369,7 +2392,8 @@ export default function App() {
                           )}
                         </div>
                       </div>
-                    ))}
+                    );
+                    })}
                   </div>
                 </div>
 

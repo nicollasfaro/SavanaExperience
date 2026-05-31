@@ -727,7 +727,7 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
             {/* SVG Visual Scale */}
             <div className="relative pt-4 overflow-hidden">
               <div className="flex justify-between items-end h-40 border-b border-slate-800 pb-1 px-4 gap-2">
-                {students.map((student) => {
+                {classStudents.map((student) => {
                   const barPercentage = Math.min(100, Math.max(15, (student.xp / 4000) * 105));
                   return (
                     <div key={student.userId} className="flex flex-col items-center flex-1 group">

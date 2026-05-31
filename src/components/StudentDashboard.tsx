@@ -149,7 +149,18 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
                 const progressList = localDB.getProgress(user.userId);
                 const prog = progressList.find(p => p.courseId === course.id);
                 const courseModules = localDB.getModules().filter(m => m.courseId === course.id);
-                const lessons = courseModules.flatMap(m => m.isLive ? [] : (m.lessons || []));
+                const lessons = courseModules.flatMap(m => m.isLive 
+                  ? [{ 
+                      id: `live-session-${m.id}`, 
+                      moduleId: m.id, 
+                      title: `Aula Ao Vivo: ${m.title}`, 
+                      description: m.description, 
+                      order: 1, 
+                      duration: '1h', 
+                      type: 'video' as const
+                    }] 
+                  : (m.lessons || [])
+                );
                 const completedCount = lessons.filter(l => prog?.completedLessons.includes(l.id)).length;
                 const totalLessonsCount = lessons.length;
                 const isCourseCompleted = totalLessonsCount > 0 && completedCount === totalLessonsCount;

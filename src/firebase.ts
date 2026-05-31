@@ -258,6 +258,15 @@ class StorageEngine {
             this.notify('leaderboard');
           }
         }
+        
+        // Check for and process any pre-registrations matching this user's email (Gmail or classic email/password login)
+        if (user.email) {
+          try {
+            await processPreRegistration(user.email, user.uid);
+          } catch (enrollErr) {
+            console.warn("Auto-enrollment matching pre-registration failed on login change:", enrollErr);
+          }
+        }
 
         // Start active listeners
         this.setupRealtimeListeners();
@@ -755,6 +764,63 @@ class StorageEngine {
     }
   }
 
+  async completeLessonForUser(userId: string, courseId: string, lessonId: string, xpReward: number = 200): Promise<void> {
+    let prog: StudentProgress | null = null;
+    const list = this.getProgress(userId);
+    const cachedProg = list.find(p => p.courseId === courseId);
+    
+    if (cachedProg) {
+      prog = { ...cachedProg, completedLessons: [...cachedProg.completedLessons] };
+    } else if (this.isFirebaseAuthenticated) {
+      try {
+        const snap = await getDoc(doc(db, 'progress', `${userId}_${courseId}`));
+        if (snap.exists()) {
+          const data = snap.data() as StudentProgress;
+          prog = {
+            ...data,
+            completedLessons: data.completedLessons || []
+          };
+        }
+      } catch (err) {
+        console.warn("Failed to fetch progress from firestore inside completeLessonForUser:", err);
+      }
+    }
+
+    if (!prog) {
+      prog = {
+        userId: userId,
+        courseId: courseId,
+        progressPercentage: 0,
+        completedLessons: [],
+        xp: 0,
+        score: 0
+      };
+    }
+
+    if (!prog.completedLessons.includes(lessonId)) {
+      prog.completedLessons.push(lessonId);
+      prog.xp += xpReward;
+      
+      const updatedList = this.getProgress(userId).filter(p => p.courseId !== courseId);
+      updatedList.push(prog);
+      this.set(`progress_${userId}`, updatedList);
+      this.notify(`progress_${userId}`);
+
+      if (this.isFirebaseAuthenticated) {
+        try {
+          await setDoc(doc(db, 'progress', `${userId}_${courseId}`), cleanUndefined({
+            ...prog,
+            userId: userId
+          }));
+        } catch (err) {
+          console.warn("Failed to save progress to firestore in completeLessonForUser:", err);
+        }
+      }
+
+      await this.updateLeaderboardXP(userId, xpReward);
+    }
+  }
+
   // Leaderboard
   getLeaderboard(): LeaderboardUser[] {
     return this.get('leaderboard', INITIAL_LEADERBOARD);
@@ -1143,6 +1209,91 @@ export async function uploadCourseThumbnail(courseId: string, file: File, onProg
   });
 }
 
+export async function processPreRegistration(email: string | null | undefined, userId: string): Promise<void> {
+  if (!email) return;
+  const docId = email.trim().toLowerCase();
+  try {
+    const preSnap = await getDoc(doc(db, 'preRegistrations', docId));
+    if (preSnap.exists()) {
+      const preReg = preSnap.data() as PreRegistration;
+      if (!preReg.used) {
+        // 1. Seed Course Registrations / Payments in Firestore
+        if (preReg.courseIds && preReg.courseIds.length > 0) {
+          for (const courseId of preReg.courseIds) {
+            const paymentId = `${userId}_${courseId}`;
+            try {
+              await setDoc(doc(db, 'payments', paymentId), {
+                id: paymentId,
+                userId: userId,
+                courseId: courseId,
+                paymentStatus: 'completed',
+                paymentMethod: 'WhatsApp Pre-Registration',
+                amount: 0,
+                enrolledAt: new Date().toISOString()
+              });
+            } catch (payErr) {
+              console.warn(`Failed to seed payment for course ${courseId}:`, payErr);
+            }
+          }
+
+          // 2. Set them into the local cache immediately to ensure instantaneous UI rendering without waiting for snap
+          try {
+            await localDB.saveRegistrations(preReg.courseIds);
+          } catch (localRegErr) {
+            console.warn("Failed to set local registrations:", localRegErr);
+          }
+
+          // 2.5 Auto-enroll user in associated Turmas (cohorts)
+          try {
+            const turmasList: Turma[] = [];
+            try {
+              const turmasSnap = await getDocs(collection(db, 'turmas'));
+              turmasSnap.forEach(tDoc => {
+                turmasList.push({ id: tDoc.id, ...tDoc.data() } as Turma);
+              });
+            } catch (dbErr) {
+              console.warn("Could not fetch turmas from firestore directly, falling back to local cache", dbErr);
+              turmasList.push(...localDB.getTurmas());
+            }
+
+            for (const turma of turmasList) {
+              if (preReg.courseIds.includes(turma.courseId)) {
+                const currentStudentIds = turma.studentIds || [];
+                if (!currentStudentIds.includes(userId)) {
+                  const updatedTurma: Turma = {
+                    ...turma,
+                    studentIds: [...currentStudentIds, userId]
+                  };
+                  await localDB.saveTurma(updatedTurma);
+                  console.log(`Auto-enrolled user ${userId} into turma ${turma.id} for course ${turma.courseId}`);
+                }
+              }
+            }
+          } catch (turmaEnrollErr) {
+            console.warn("Failed to auto-enroll user in course cohorts/turmas:", turmaEnrollErr);
+          }
+
+          console.log(`WhatsApp pre-registration auto-enrolled user ${userId} in:`, preReg.courseIds);
+        }
+
+        // 3. Mark pre-registration as used in Firestore
+        try {
+          await setDoc(doc(db, 'preRegistrations', docId), {
+            ...preReg,
+            used: true,
+            usedBy: userId,
+            usedAt: new Date().toISOString()
+          });
+        } catch (preUseErr) {
+          console.warn("Failed to mark pre-registration as used in Firestore:", preUseErr);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Silent fallback: processing Whatsapp pre-registration failed:", err);
+  }
+}
+
 export async function signUpUserWithEmailAndPassword(name: string, email: string, password: string, avatarUrlOrFile?: string | File): Promise<any> {
   const credentials = await createUserWithEmailAndPassword(auth, email, password);
   const user = credentials.user;
@@ -1212,87 +1363,7 @@ export async function signUpUserWithEmailAndPassword(name: string, email: string
   }
 
   // --- WhatsApp Pre-Registration Auto-Enrollment ---
-  const docId = email.trim().toLowerCase();
-  try {
-    const preSnap = await getDoc(doc(db, 'preRegistrations', docId));
-    if (preSnap.exists()) {
-      const preReg = preSnap.data() as PreRegistration;
-      if (!preReg.used) {
-        // 1. Seed Course Registrations / Payments in Firestore
-        if (preReg.courseIds && preReg.courseIds.length > 0) {
-          for (const courseId of preReg.courseIds) {
-            const paymentId = `${user.uid}_${courseId}`;
-            try {
-              await setDoc(doc(db, 'payments', paymentId), {
-                id: paymentId,
-                userId: user.uid,
-                courseId: courseId,
-                paymentStatus: 'completed',
-                paymentMethod: 'WhatsApp Pre-Registration',
-                amount: 0,
-                enrolledAt: new Date().toISOString()
-              });
-            } catch (payErr) {
-              console.warn(`Failed to seed payment for course ${courseId}:`, payErr);
-            }
-          }
-
-          // 2. Set them into the local cache immediately to ensure instantaneous UI rendering without waiting for snap
-          try {
-            await localDB.saveRegistrations(preReg.courseIds);
-          } catch (localRegErr) {
-            console.warn("Failed to set local registrations:", localRegErr);
-          }
-
-          // 2.5 Auto-enroll user in associated Turmas (cohorts)
-          try {
-            const turmasList: Turma[] = [];
-            try {
-              const turmasSnap = await getDocs(collection(db, 'turmas'));
-              turmasSnap.forEach(tDoc => {
-                turmasList.push({ id: tDoc.id, ...tDoc.data() } as Turma);
-              });
-            } catch (dbErr) {
-              console.warn("Could not fetch turmas from firestore directly, falling back to local cache", dbErr);
-              turmasList.push(...localDB.getTurmas());
-            }
-
-            for (const turma of turmasList) {
-              if (preReg.courseIds.includes(turma.courseId)) {
-                const currentStudentIds = turma.studentIds || [];
-                if (!currentStudentIds.includes(user.uid)) {
-                  const updatedTurma: Turma = {
-                    ...turma,
-                    studentIds: [...currentStudentIds, user.uid]
-                  };
-                  await localDB.saveTurma(updatedTurma);
-                  console.log(`Auto-enrolled user ${user.uid} into turma ${turma.id} for course ${turma.courseId}`);
-                }
-              }
-            }
-          } catch (turmaEnrollErr) {
-            console.warn("Failed to auto-enroll user in course cohorts/turmas:", turmaEnrollErr);
-          }
-
-          console.log(`WhatsApp pre-registration auto-enrolled user in:`, preReg.courseIds);
-        }
-
-        // 3. Mark pre-registration as used in Firestore
-        try {
-          await setDoc(doc(db, 'preRegistrations', docId), {
-            ...preReg,
-            used: true,
-            usedBy: user.uid,
-            usedAt: new Date().toISOString()
-          });
-        } catch (preUseErr) {
-          console.warn("Failed to mark pre-registration as used in Firestore:", preUseErr);
-        }
-      }
-    }
-  } catch (err) {
-    console.warn("Silent fallback: processing Whatsapp pre-registration failed:", err);
-  }
+  await processPreRegistration(email, user.uid);
 
   return user;
 }

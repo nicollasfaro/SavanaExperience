@@ -61,6 +61,13 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
   const [courseSaleType, setCourseSaleType] = useState<'website' | 'whatsapp'>('website');
   const [courseWhatsappNumber, setCourseWhatsappNumber] = useState('');
   const [courseShowStudents, setCourseShowStudents] = useState(true);
+  const [courseShowBenefits, setCourseShowBenefits] = useState(false);
+  const [courseBenefit1Title, setCourseBenefit1Title] = useState('Encontros Síncronos / Aulas ao Vivo');
+  const [courseBenefit1Desc, setCourseBenefit1Desc] = useState('Aprenda em tempo real pelo painel interativo com câmeras e quadro negro do professor.');
+  const [courseBenefit2Title, setCourseBenefit2Title] = useState('Grade Curricular Pedagógica');
+  const [courseBenefit2Desc, setCourseBenefit2Desc] = useState('Selecione e assista aulas em vídeo, leia apostilas digitais e realize simulados.');
+  const [courseBenefit3Title, setCourseBenefit3Title] = useState('Quizzes de Fixação com XP');
+  const [courseBenefit3Desc, setCourseBenefit3Desc] = useState('Gabarite os testes práticos de cada módulo pedagógico para acumular pontos de XP.');
   
   // Track specific course ID for asset mapping, plus Upload states
   const [modalCourseId, setModalCourseId] = useState('');
@@ -297,6 +304,13 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
     setCourseSaleType('website');
     setCourseWhatsappNumber('');
     setCourseShowStudents(true);
+    setCourseShowBenefits(false);
+    setCourseBenefit1Title('Encontros Síncronos / Aulas ao Vivo');
+    setCourseBenefit1Desc('Aprenda em tempo real pelo painel interativo com câmeras e quadro negro do professor.');
+    setCourseBenefit2Title('Grade Curricular Pedagógica');
+    setCourseBenefit2Desc('Selecione e assista aulas em vídeo, leia apostilas digitais e realize simulados.');
+    setCourseBenefit3Title('Quizzes de Fixação com XP');
+    setCourseBenefit3Desc('Gabarite os testes práticos de cada módulo pedagógico para acumular pontos de XP.');
     
     // Clear upload states
     setUploadPercent(null);
@@ -325,6 +339,13 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
     setCourseSaleType(c.saleType || 'website');
     setCourseWhatsappNumber(c.whatsappNumber || '');
     setCourseShowStudents(c.showStudentsCount !== false);
+    setCourseShowBenefits(!!c.showBenefits);
+    setCourseBenefit1Title(c.benefit1Title || 'Encontros Síncronos / Aulas ao Vivo');
+    setCourseBenefit1Desc(c.benefit1Desc || 'Aprenda em tempo real pelo painel interativo com câmeras e quadro negro do professor.');
+    setCourseBenefit2Title(c.benefit2Title || 'Grade Curricular Pedagógica');
+    setCourseBenefit2Desc(c.benefit2Desc || 'Selecione e assista aulas em vídeo, leia apostilas digitais e realize simulados.');
+    setCourseBenefit3Title(c.benefit3Title || 'Quizzes de Fixação com XP');
+    setCourseBenefit3Desc(c.benefit3Desc || 'Gabarite os testes práticos de cada módulo pedagógico para acumular pontos de XP.');
 
     // Clear upload states
     setUploadPercent(null);
@@ -367,7 +388,14 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
       format: courseFormat || 'online',
       saleType: courseSaleType,
       whatsappNumber: courseSaleType === 'whatsapp' ? courseWhatsappNumber : '',
-      showStudentsCount: courseShowStudents
+      showStudentsCount: courseShowStudents,
+      showBenefits: courseShowBenefits,
+      benefit1Title: courseBenefit1Title,
+      benefit1Desc: courseBenefit1Desc,
+      benefit2Title: courseBenefit2Title,
+      benefit2Desc: courseBenefit2Desc,
+      benefit3Title: courseBenefit3Title,
+      benefit3Desc: courseBenefit3Desc
     };
 
     try {
@@ -1686,6 +1714,88 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                   </p>
                 </div>
               )}
+
+              {/* Exibir Benefícios Inclusos */}
+              <div className="space-y-4 bg-slate-950/60 p-4 rounded-xl border border-slate-850">
+                <div className="flex items-center gap-3">
+                  <input
+                    id="modal-course-show-benefits-chk"
+                    type="checkbox"
+                    checked={courseShowBenefits}
+                    onChange={(e) => setCourseShowBenefits(e.target.checked)}
+                    className="w-4 h-4 text-emerald-500 bg-slate-900 border-slate-800 rounded focus:ring-emerald-500 shrink-0"
+                  />
+                  <div>
+                    <label htmlFor="modal-course-show-benefits-chk" className="block text-xs font-bold text-slate-200 cursor-pointer">
+                      Exibir Benefícios Inclusos na Matrícula
+                    </label>
+                    <span className="text-[10px] text-slate-500 font-mono">Habilita e personaliza a seção de benefícios na exibição de detalhes sob "Saiba Mais".</span>
+                  </div>
+                </div>
+
+                {courseShowBenefits && (
+                  <div className="space-y-4 pt-3 border-t border-slate-850">
+                    <h5 className="text-[10px] uppercase font-mono tracking-wider text-emerald-400 font-bold block">Personalizar Benefícios</h5>
+                    
+                    {/* Benefit 1 */}
+                    <div className="space-y-2 pl-3 border-l-2 border-emerald-500/20">
+                      <label className="block text-[10px] font-mono text-slate-400">Benefício 1: Título e Descrição</label>
+                      <input
+                        type="text"
+                        value={courseBenefit1Title}
+                        onChange={(e) => setCourseBenefit1Title(e.target.value)}
+                        placeholder="Ex: Encontros Síncronos / Aulas au Vivo"
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                      />
+                      <textarea
+                        value={courseBenefit1Desc}
+                        onChange={(e) => setCourseBenefit1Desc(e.target.value)}
+                        placeholder="Ex: Aprenda em tempo real pelo painel interativo com câmeras..."
+                        rows={2}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+
+                    {/* Benefit 2 */}
+                    <div className="space-y-2 pl-3 border-l-2 border-emerald-500/20">
+                      <label className="block text-[10px] font-mono text-slate-400">Benefício 2: Título e Descrição</label>
+                      <input
+                        type="text"
+                        value={courseBenefit2Title}
+                        onChange={(e) => setCourseBenefit2Title(e.target.value)}
+                        placeholder="Ex: Grade Curricular Pedagógica"
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                      />
+                      <textarea
+                        value={courseBenefit2Desc}
+                        onChange={(e) => setCourseBenefit2Desc(e.target.value)}
+                        placeholder="Ex: Selecione e assista aulas em vídeo, leia apostilas digitais..."
+                        rows={2}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+
+                    {/* Benefit 3 */}
+                    <div className="space-y-2 pl-3 border-l-2 border-emerald-500/20">
+                      <label className="block text-[10px] font-mono text-slate-400">Benefício 3: Título e Descrição</label>
+                      <input
+                        type="text"
+                        value={courseBenefit3Title}
+                        onChange={(e) => setCourseBenefit3Title(e.target.value)}
+                        placeholder="Ex: Quizzes de Fixação com XP"
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                      />
+                      <textarea
+                        value={courseBenefit3Desc}
+                        onChange={(e) => setCourseBenefit3Desc(e.target.value)}
+                        placeholder="Ex: Gabarite os testes práticos de cada módulo pedagógico..."
+                        rows={2}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Publish Toggle */}
               <div className="flex items-center gap-3 bg-slate-950 p-3.5 rounded-xl border border-slate-850">
