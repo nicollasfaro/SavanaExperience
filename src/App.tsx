@@ -1870,7 +1870,7 @@ export default function App() {
                                     if (!hasAccess) return;
                                     if (canEnterLive) {
                                       // Pre-fill auto-join data so Classroom immediately enters the room
-                                      localStorage.setItem('savanaxp_classroom_auto_join', JSON.stringify({ 
+                                      sessionStorage.setItem('savanaxp_classroom_auto_join', JSON.stringify({ 
                                         moduleId: mod.id, 
                                         roomId: mod.liveRoomId || `room-${mod.id}` 
                                       }));

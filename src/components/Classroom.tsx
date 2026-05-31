@@ -280,9 +280,9 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
   // Sync state key
   const STATE_KEY = 'savanaxp_classroom_sync_v1';
 
-  // Create or load session from localStorage
+  // Create or load session from sessionStorage
   const loadInitialSession = (): ClassroomSession => {
-    const data = localStorage.getItem(STATE_KEY);
+    const data = sessionStorage.getItem(STATE_KEY);
     let parsed: ClassroomSession | null = null;
     if (data) {
       try {
@@ -347,11 +347,11 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
 
   // Synchronic helper for direct redirect from the curriculum sidebar
   useEffect(() => {
-    const autoJoinData = localStorage.getItem('savanaxp_classroom_auto_join');
+    const autoJoinData = sessionStorage.getItem('savanaxp_classroom_auto_join');
     if (autoJoinData) {
       try {
         const { moduleId, roomId } = JSON.parse(autoJoinData);
-        localStorage.removeItem('savanaxp_classroom_auto_join');
+        sessionStorage.removeItem('savanaxp_classroom_auto_join');
         
         const mod = modules.find(m => m.id === moduleId);
         if (mod) {
@@ -455,7 +455,7 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
 
         if (isMounted) {
           setSession(currentSession);
-          localStorage.setItem(`savanaxp_classroom_sync_room_${activeRoomId}`, JSON.stringify(currentSession));
+          sessionStorage.setItem(`savanaxp_classroom_sync_room_${activeRoomId}`, JSON.stringify(currentSession));
         }
 
         // Save back to Firestore so others can see us
@@ -490,7 +490,7 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
           });
         } else {
           setSession(data);
-          localStorage.setItem(`savanaxp_classroom_sync_room_${activeRoomId}`, JSON.stringify(data));
+          sessionStorage.setItem(`savanaxp_classroom_sync_room_${activeRoomId}`, JSON.stringify(data));
         }
       }
     }, (err) => {
@@ -726,7 +726,7 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
                 screenShareActive: false,
                 screenShareUserId: null
               };
-              localStorage.setItem(STATE_KEY, JSON.stringify(updated));
+              sessionStorage.setItem(STATE_KEY, JSON.stringify(updated));
               return updated;
             });
             triggerToast("Compartilhamento de tela interrompido.");
@@ -891,9 +891,9 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
     };
   }, []);
 
-  // Sync state helper to persist on LocalStorage and Firebase Firestore in Realtime
+  // Sync state helper to persist on sessionStorage and Firebase Firestore in Realtime
   const saveSessionState = (updatedSession: ClassroomSession) => {
-    localStorage.setItem(STATE_KEY, JSON.stringify(updatedSession));
+    sessionStorage.setItem(STATE_KEY, JSON.stringify(updatedSession));
     setSession(updatedSession);
 
     if (activeRoomId) {

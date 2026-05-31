@@ -125,22 +125,19 @@ class StorageEngine {
     this.init();
   }
 
-  // Local Storage helper
+  // In-memory cache instead of localStorage
+  private memoryCache: Record<string, any> = {};
+
+  // Transient memory-based cache helper
   private get(key: string, defaultValue: any) {
-    const data = localStorage.getItem(this.prefix + key);
-    if (!data) {
-      this.set(key, defaultValue);
-      return defaultValue;
+    if (this.memoryCache[key] === undefined) {
+      this.memoryCache[key] = defaultValue;
     }
-    try {
-      return JSON.parse(data);
-    } catch {
-      return defaultValue;
-    }
+    return this.memoryCache[key];
   }
 
   private set(key: string, value: any) {
-    localStorage.setItem(this.prefix + key, JSON.stringify(value));
+    this.memoryCache[key] = value;
   }
 
   // Listener pattern for real-time reactive sync
