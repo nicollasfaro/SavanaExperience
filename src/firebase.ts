@@ -175,20 +175,32 @@ class StorageEngine {
         console.log(`Real-time connection authenticated as ${isAnon ? 'Anonymous' : 'Gmail'} user:`, user.email || 'None', 'UID:', user.uid);
         this.isFirebaseAuthenticated = true;
         
-        // Ensure user is matching with an instructor/profile role record if they are not anonymous
+        // Ensure user is matching with an instructor profile if they are an instructor or system admin
         try {
           if (!isAnon) {
-            await setDoc(doc(db, 'instructors', 'course-1-teacher'), {
-              id: 'course-1-teacher',
-              userId: 'course-1-teacher',
-              name: 'Dr. Gabriel Silva (M.V.)'
-            }, { merge: true });
+            const isAdminEmail = user.email === 'ciuldinciuldin@gmail.com';
+            // Only attempt to seed instructor profiles if they are indeed the admin or an instructor
+            if (isAdminEmail) {
+              try {
+                await setDoc(doc(db, 'instructors', 'course-1-teacher'), {
+                  id: 'course-1-teacher',
+                  userId: 'course-1-teacher',
+                  name: 'Dr. Gabriel Silva (M.V.)'
+                }, { merge: true });
+              } catch (e) {
+                console.warn('Teacher seeding skipped:', e);
+              }
 
-            await setDoc(doc(db, 'instructors', user.uid), {
-              id: user.uid,
-              userId: user.uid,
-              name: user.displayName || user.email?.split('@')[0] || 'User'
-            }, { merge: true });
+              try {
+                await setDoc(doc(db, 'instructors', user.uid), {
+                  id: user.uid,
+                  userId: user.uid,
+                  name: user.displayName || user.email?.split('@')[0] || 'User'
+                }, { merge: true });
+              } catch (e) {
+                console.warn('Instructor profile seeding skipped:', e);
+              }
+            }
           }
         } catch (setDocErr) {
           console.warn('Silent restriction: Instructors profile could not be seeded on remote Firestore directly:', setDocErr);
@@ -215,7 +227,11 @@ class StorageEngine {
               badges: ['badge-welcome'],
               role: user.email === 'ciuldinciuldin@gmail.com' ? 'instructor' : 'student' // Admin as instructor
             };
-            await setDoc(userDocRef, defaultUser);
+            
+            // Clean undefined fields first, ensuring strict compatibility with Firestore client SDK
+            const cleanedProfile = cleanUndefined(defaultUser);
+            await setDoc(userDocRef, cleanedProfile);
+            console.log('Successfully registered new Gmail user in Firestore leaderboard:', user.email);
             
             // Append locally
             const localBoard = this.getLeaderboard();
@@ -228,11 +244,11 @@ class StorageEngine {
             // Update email on existing profile if missing
             const existingData = userSnap.data() as LeaderboardUser;
             if (!existingData.email && user.email) {
-              await updateDoc(userDocRef, { email: user.email });
+              await updateDoc(userDocRef, cleanUndefined({ email: user.email }));
             }
           }
-        } catch (err) {
-          console.warn('Could not register/update user in remote leaderboard collection:', err);
+        } catch (err: any) {
+          console.error('CRITICAL: Could not register/update user in remote leaderboard collection:', err);
           
           // Local fallback
           const localBoard = this.getLeaderboard();
