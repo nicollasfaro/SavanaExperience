@@ -6,7 +6,8 @@
 import { initializeApp } from 'firebase/app';
 import { 
   getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, 
-  deleteDoc, collection, onSnapshot, getDocFromServer
+  deleteDoc, collection, onSnapshot, getDocFromServer,
+  query, where
 } from 'firebase/firestore';
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, signInAnonymously } from 'firebase/auth';
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
@@ -386,6 +387,105 @@ class StorageEngine {
       }
     });
     this.activeUnsubscribes.push(unsubTurmas);
+
+    const user = auth.currentUser;
+    if (!user) return;
+
+    // Payments (Registrations) Sync
+    const unsubPayments = onSnapshot(
+      query(collection(db, 'payments'), where('userId', '==', user.uid)),
+      (snap) => {
+        const enrolledCourseIds: string[] = [];
+        snap.forEach((d) => {
+          const payment = d.data();
+          if (payment.paymentStatus === 'completed' && payment.courseId) {
+            enrolledCourseIds.push(payment.courseId);
+          }
+        });
+        if (enrolledCourseIds.length > 0) {
+          this.set('registrations', enrolledCourseIds);
+        } else {
+          const existingReg = this.get('registrations', ['course-2']);
+          if (!existingReg || existingReg.length === 0) {
+            this.set('registrations', ['course-2']);
+          }
+        }
+        this.notify('registrations');
+      },
+      (err) => {
+        if (this.isFirebaseAuthenticated) {
+          handleFirestoreError(err, OperationType.LIST, 'payments');
+        } else {
+          console.warn("Payments Sync error: ", err.message);
+        }
+      }
+    );
+    this.activeUnsubscribes.push(unsubPayments);
+
+    // Progress Sync
+    const unsubProgress = onSnapshot(
+      query(collection(db, 'progress'), where('userId', '==', user.uid)),
+      (snap) => {
+        const progressList: StudentProgress[] = [];
+        snap.forEach((d) => {
+          progressList.push(d.data() as StudentProgress);
+        });
+        this.set(`progress_${user.uid}`, progressList);
+        this.notify(`progress_${user.uid}`);
+      },
+      (err) => {
+        if (this.isFirebaseAuthenticated) {
+          handleFirestoreError(err, OperationType.LIST, 'progress');
+        } else {
+          console.warn("Progress Sync error: ", err.message);
+        }
+      }
+    );
+    this.activeUnsubscribes.push(unsubProgress);
+
+    // Rewards Sync
+    const unsubRewards = onSnapshot(
+      collection(db, 'rewards'),
+      (snap) => {
+        const rewardsList: Reward[] = [];
+        snap.forEach((d) => {
+          rewardsList.push(d.data() as Reward);
+        });
+        if (rewardsList.length > 0) {
+          this.set('rewards', rewardsList);
+          this.notify('rewards');
+        }
+      },
+      (err) => {
+        if (this.isFirebaseAuthenticated) {
+          handleFirestoreError(err, OperationType.LIST, 'rewards');
+        } else {
+          console.warn("Rewards Sync error: ", err.message);
+        }
+      }
+    );
+    this.activeUnsubscribes.push(unsubRewards);
+
+    // Redemptions Sync
+    const unsubRedemptions = onSnapshot(
+      query(collection(db, 'redemptions'), where('userId', '==', user.uid)),
+      (snap) => {
+        const redemptionsList: Redemption[] = [];
+        snap.forEach((d) => {
+          redemptionsList.push(d.data() as Redemption);
+        });
+        this.set('redemptions', redemptionsList);
+        this.notify('redemptions');
+      },
+      (err) => {
+        if (this.isFirebaseAuthenticated) {
+          handleFirestoreError(err, OperationType.LIST, 'redemptions');
+        } else {
+          console.warn("Redemptions Sync error: ", err.message);
+        }
+      }
+    );
+    this.activeUnsubscribes.push(unsubRedemptions);
   }
 
   // --- PUBLIC API WRAPPERS (Sync local fallback + Async push onto Firestore) ---
@@ -395,9 +495,30 @@ class StorageEngine {
     return this.get('registrations', ['course-2']);
   }
   
-  saveRegistrations(courseIds: string[]) {
+  async saveRegistrations(courseIds: string[]) {
     this.set('registrations', courseIds);
     this.notify('registrations');
+
+    if (!this.isFirebaseAuthenticated || !auth.currentUser) return;
+
+    for (const courseId of courseIds) {
+      const paymentId = `${auth.currentUser.uid}_${courseId}`;
+      const course = this.getCourses().find(c => c.id === courseId);
+      const amount = course ? course.price : 0;
+      try {
+        await setDoc(doc(db, 'payments', paymentId), cleanUndefined({
+          id: paymentId,
+          userId: auth.currentUser.uid,
+          courseId: courseId,
+          paymentStatus: 'completed',
+          paymentMethod: 'Simulated Pix/Credit',
+          amount: amount,
+          enrolledAt: new Date().toISOString()
+        }));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `payments/${paymentId}`);
+      }
+    }
   }
 
   // Courses

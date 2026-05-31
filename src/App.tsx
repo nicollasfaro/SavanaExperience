@@ -126,8 +126,13 @@ export default function App() {
          try {
            const docSnapshot = await getDoc(doc(db, 'admins', authUser.uid));
            setIsAdminRoleFromDB(docSnapshot.exists());
-         } catch (err) {
-           console.error("Checking admin access", err);
+         } catch (err: any) {
+           const isOffline = err?.message?.toLowerCase().includes('offline') || String(err).toLowerCase().includes('offline');
+           if (isOffline) {
+             console.warn("Checking admin access (offline): using offline / default states.", err);
+           } else {
+             console.error("Checking admin access", err);
+           }
          }
       };
       fetchAdminProfile();
@@ -136,6 +141,7 @@ export default function App() {
 
   // 6. Registered course registrations tracker
   const [localRegistrations, setLocalRegistrations] = useState<string[]>(() => localDB.getRegistrations());
+  const [userProgress, setUserProgress] = useState<StudentProgress[]>(() => localDB.getProgress(authUser?.uid || 'current-user-id'));
   const [allLeaderboard, setAllLeaderboard] = useState<LeaderboardUser[]>(() => localDB.getLeaderboard());
 
   // 2. Auth State and Dynamic Role (Toggled only in real-time by General Admin in database)
@@ -457,6 +463,17 @@ export default function App() {
       unsubRegistrations();
     };
   }, []);
+
+  // Listen for progress & enrollment changes when currentUserId changes
+  useEffect(() => {
+    if (!currentUserId) return;
+    setUserProgress(localDB.getProgress(currentUserId));
+    setLocalRegistrations(localDB.getRegistrations());
+    const unsubProgress = localDB.onChange(`progress_${currentUserId}`, () => {
+      setUserProgress(localDB.getProgress(currentUserId));
+    });
+    return () => unsubProgress();
+  }, [currentUserId]);
 
   // Biometrics scanner verification triggers
   const executeScan = () => {
@@ -1895,7 +1912,7 @@ export default function App() {
                           ) : (
                             mod.lessons.map(less => {
                               const isActive = selectedLesson?.id === less.id;
-                              const progressList = localDB.getProgress(currentUserId);
+                              const progressList = userProgress;
                               const currentUserProgress = progressList.find(p => p.courseId === selectedCourse?.id);
                               const isCompleted = currentUserProgress?.completedLessons.includes(less.id) || false;
                               

@@ -211,5 +211,38 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
+
+    // 14. STORE REWARDS
+    function isValidReward(data) {
+      return data.keys().hasAll(['id', 'title', 'xpCost', 'stock'])
+        && data.id is string
+        && data.title is string && data.title.size() <= 200
+        && data.xpCost is number
+        && data.stock is number;
+    }
+
+    match /rewards/{rewardId} {
+      allow read: if isSignedIn();
+      allow create: if isInstructor() && isValidReward(incoming()) && incoming().id == rewardId;
+      allow update: if (isInstructor() && isValidReward(incoming()) && incoming().id == rewardId) 
+                    || (isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['stock']) && incoming().stock >= 0);
+      allow delete: if isInstructor();
+    }
+
+    // 15. REWARD REDEMPTIONS
+    function isValidRedemption(data) {
+      return data.keys().hasAll(['id', 'userId', 'rewardId', 'redeemedAt', 'status'])
+        && data.id is string
+        && data.userId == request.auth.uid
+        && data.rewardId is string
+        && (data.status == 'pending' || data.status == 'delivered');
+    }
+
+    match /redemptions/{redemptionId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isInstructor());
+      allow create: if isSignedIn() && isValidRedemption(incoming()) && incoming().id == redemptionId;
+      allow update: if isInstructor();
+      allow delete: if isInstructor();
+    }
   }
 }

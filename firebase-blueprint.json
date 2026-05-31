@@ -124,6 +124,33 @@
       },
       "required": ["id", "userId", "courseId", "paymentStatus", "amount"]
     },
+    "rewards": {
+      "title": "Reward",
+      "description": "Item in store redeemable with XP",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "xpCost": { "type": "integer" },
+        "stock": { "type": "integer" }
+      },
+      "required": ["id", "title", "xpCost", "stock"]
+    },
+    "redemptions": {
+      "title": "Redemption",
+      "description": "Reward redemption event",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "rewardId": { "type": "string" },
+        "redeemedAt": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "delivered"] }
+      },
+      "required": ["id", "userId", "rewardId", "redeemedAt", "status"]
+    },
     "notifications": {
       "title": "NotificationItem",
       "description": "Push or educational indicator",
@@ -172,6 +199,14 @@
     "/payments/{paymentId}": {
       "schema": "payments",
       "description": "Ledger logs of acquisitions"
+    },
+    "/rewards/{rewardId}": {
+      "schema": "rewards",
+      "description": "Store items available for XP redemption"
+    },
+    "/redemptions/{redemptionId}": {
+      "schema": "redemptions",
+      "description": "Track record of user reward redemptions"
     },
     "/notifications/{notificationId}": {
       "schema": "notifications",

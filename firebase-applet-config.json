@@ -3,6 +3,7 @@
   "appId": "1:466951048843:web:b69d9aff70f385f4c40e8e",
   "apiKey": "AIzaSyDf0V8L1mdZe8aI2llf5J_iF3D8pn8lqGw",
   "authDomain": "alien-alpha-m07pf.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-005bf823-9773-4b4d-9a52-40a2cfff9ffc",
   "storageBucket": "alien-alpha-m07pf.firebasestorage.app",
   "messagingSenderId": "466951048843",
   "measurementId": ""
