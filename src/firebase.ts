@@ -11,7 +11,7 @@ import {
 } from 'firebase/firestore';
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, signInAnonymously, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { Course, CourseModule, StudentProgress, ForumThread, ChatMessage, LeaderboardUser, Turma, Reward, Redemption, CertificateSettings } from './types';
+import { Course, CourseModule, StudentProgress, ForumThread, ChatMessage, LeaderboardUser, Turma, Reward, Redemption, CertificateSettings, IssuedCertificate } from './types';
 import { INITIAL_COURSES, INITIAL_MODULES, INITIAL_LEADERBOARD, INITIAL_DISCUSSION_THREADS, INITIAL_CHAT_MESSAGES, INITIAL_TURMAS, INITIAL_CERTIFICATE_SETTINGS } from './data';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -512,9 +512,90 @@ class StorageEngine {
       console.warn("Certificate Settings Sync error: ", err.message);
     });
     this.activeUnsubscribes.push(unsubCertSettings);
+
+    // Issued Certificates Sync
+    const unsubIssuedCerts = onSnapshot(
+      query(collection(db, 'issuedCertificates'), where('userId', '==', user.uid)),
+      (snap) => {
+        const certList: IssuedCertificate[] = [];
+        snap.forEach((d) => {
+          certList.push(d.data() as IssuedCertificate);
+        });
+        this.set(`issued_certificates_${user.uid}`, certList);
+        this.notify(`issued_certificates_${user.uid}`);
+      },
+      (err) => {
+        if (this.isFirebaseAuthenticated) {
+          handleFirestoreError(err, OperationType.LIST, 'issuedCertificates');
+        } else {
+          console.warn("Issued Certificates Sync error: ", err.message);
+        }
+      }
+    );
+    this.activeUnsubscribes.push(unsubIssuedCerts);
   }
 
   // --- PUBLIC API WRAPPERS (Sync local fallback + Async push onto Firestore) ---
+
+  // Issued Certificates
+  getIssuedCertificates(userId: string): IssuedCertificate[] {
+    return this.get(`issued_certificates_${userId}`, []);
+  }
+
+  async saveIssuedCertificate(cert: IssuedCertificate) {
+    const key = `issued_certificates_${cert.userId}`;
+    const list = this.get(key, []);
+    const idx = list.findIndex((c: IssuedCertificate) => c.id === cert.id);
+    if (idx >= 0) {
+      list[idx] = cert;
+    } else {
+      list.push(cert);
+    }
+    this.set(key, list);
+    this.notify(key);
+
+    // Also store globally for validation if needed
+    const globalKey = `global_cert_${cert.id}`;
+    this.set(globalKey, cert);
+
+    if (!this.isFirebaseAuthenticated) return;
+
+    try {
+      await setDoc(doc(db, 'issuedCertificates', cert.id), cleanUndefined(cert));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `issuedCertificates/${cert.id}`);
+    }
+  }
+
+  async validateCertificate(code: string): Promise<IssuedCertificate | null> {
+    const cleanCode = code.trim().toUpperCase();
+    
+    // First check memory cache
+    const cached = this.get(`global_cert_${cleanCode}`, null);
+    if (cached) return cached;
+
+    // Direct fetch from server for maximum integrity and real time checks
+    try {
+      const snap = await getDoc(doc(db, 'issuedCertificates', cleanCode));
+      if (snap.exists()) {
+        const cert = snap.data() as IssuedCertificate;
+        this.set(`global_cert_${cleanCode}`, cert);
+        return cert;
+      }
+    } catch (err) {
+      console.warn("Validate Certificate server-side check failed:", err);
+    }
+
+    // Secondary fallback: search current user's lists
+    const user = auth.currentUser;
+    if (user) {
+      const certs = this.getIssuedCertificates(user.uid);
+      const matched = certs.find(c => c.id.toUpperCase() === cleanCode);
+      if (matched) return matched;
+    }
+
+    return null;
+  }
 
   // Certificate Settings
   getCertificateSettings(): CertificateSettings {

@@ -18,6 +18,7 @@ import { Classroom } from './components/Classroom';
 import { Store } from './components/Store';
 import { StudentDashboard } from './components/StudentDashboard';
 import { CertificateModal } from './components/CertificateModal';
+import { CertificateValidator } from './components/CertificateValidator';
 import { 
   Trophy, BookOpen, Sun, Moon, Sparkles, MessageSquare, Play, CheckCircle2, 
   HelpCircle, CreditCard, ChevronRight, Download, Calendar, ShieldCheck, 
@@ -214,6 +215,7 @@ export default function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [formatFilter, setFormatFilter] = useState<'all' | 'online' | 'recorded' | 'presencial'>('all');
   const [viewingCertificate, setViewingCertificate] = useState(false);
+  const [showCertificateValidator, setShowCertificateValidator] = useState(false);
 
   // 4. Data states loading from localStorage localDB
   const [courses, setCourses] = useState<Course[]>(() => localDB.getCourses());
@@ -1276,6 +1278,16 @@ export default function App() {
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 Ao Vivo
               </button>
+
+              <button
+                onClick={() => setShowCertificateValidator(true)}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg text-slate-350 hover:text-slate-100 bg-slate-950/60 border border-slate-850 hover:border-slate-750 transition flex items-center gap-1.5 cursor-pointer font-medium"
+                title="Verificar validade de um Certificado de Conclusão"
+                id="btn-nav-validate-certs"
+              >
+                <Award size={13} className="text-emerald-400" />
+                <span>Validar</span>
+              </button>
             </nav>
           )}
 
@@ -1492,6 +1504,19 @@ export default function App() {
                     <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
                   </span>
                   Sala Ao Vivo
+                </button>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  onClick={() => { setShowCertificateValidator(true); setIsMobileMenuOpen(false); }}
+                  className="w-full text-left px-3 py-3 text-sm font-semibold rounded-xl bg-slate-950 border border-slate-900 text-slate-300 hover:text-white transition flex items-center gap-3 cursor-pointer"
+                  id="btn-nav-mobile-validate-certs"
+                >
+                  <span className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center shrink-0 border border-slate-800">
+                    <Award size={14} className="text-emerald-400" />
+                  </span>
+                  Validar Certificados
                 </button>
               </div>
             </nav>
@@ -2441,12 +2466,20 @@ export default function App() {
         <CertificateModal
           isOpen={viewingCertificate}
           onClose={() => setViewingCertificate(false)}
+          userId={currentUserId}
           studentName={currentUserName}
           courseTitle={selectedCourse.title}
           instructorName={selectedCourse.instructorName || "Coordenador Docente"}
           courseId={selectedCourse.id}
           duration={selectedCourse.totalDuration || "40 horas"}
           xpReward={selectedCourse.xpReward || 500}
+        />
+      )}
+
+      {showCertificateValidator && (
+        <CertificateValidator
+          isOpen={showCertificateValidator}
+          onClose={() => setShowCertificateValidator(false)}
         />
       )}
 

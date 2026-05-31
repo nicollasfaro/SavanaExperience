@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
-import { Award, Download, Printer, Share2, X, Check, ShieldCheck, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Award, Download, Printer, Share2, X, Check, ShieldCheck, Sparkles, Loader2 } from 'lucide-react';
 import { localDB } from '../firebase';
+import { IssuedCertificate } from '../types';
 
 interface CertificateModalProps {
   isOpen: boolean;
   onClose: () => void;
+  userId: string;
   studentName: string;
   courseTitle: string;
   instructorName: string;
@@ -16,6 +18,7 @@ interface CertificateModalProps {
 export function CertificateModal({
   isOpen,
   onClose,
+  userId,
   studentName,
   courseTitle,
   instructorName,
@@ -24,46 +27,89 @@ export function CertificateModal({
   xpReward
 }: CertificateModalProps) {
   const [copied, setCopied] = useState(false);
-
-  if (!isOpen) return null;
+  const [cert, setCert] = useState<IssuedCertificate | null>(null);
 
   const certSettings = localDB.getCertificateSettings();
 
-  // Generate a realistic, unique verification hash
-  const issueDate = new Date();
-  const formattedDate = issueDate.toLocaleDateString('pt-BR', {
+  useEffect(() => {
+    if (!isOpen) return;
+
+    // Check if certificate has already been issued
+    const list = localDB.getIssuedCertificates(userId);
+    const existing = list.find((c: IssuedCertificate) => c.courseId === courseId);
+
+    if (existing) {
+      setCert(existing);
+    } else {
+      // Create a unique, once-and-for-all Certificate object
+      const issueDate = new Date();
+      
+      const yearChar = issueDate.getFullYear().toString().slice(-2);
+      const monthChar = (issueDate.getMonth() + 1).toString().padStart(2, '0');
+      const studentPrefix = studentName.trim().replace(/\s+/g, '').replace(/[^a-zA-Z]/g, '').slice(0, 3).toUpperCase() || 'STU';
+      const coursePrefix = courseId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 3).toUpperCase() || 'CRS';
+      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+      const uniqueCertId = `SV-${yearChar}${monthChar}-${studentPrefix}-${coursePrefix}-${randomSuffix}`;
+
+      const newCert: IssuedCertificate = {
+        id: uniqueCertId,
+        userId,
+        userName: studentName,
+        courseId,
+        courseTitle,
+        instructorName: instructorName && instructorName !== "Coordenador Docente" 
+          ? instructorName 
+          : certSettings.chiefInstructorName,
+        duration: duration || "40 horas",
+        xpReward: xpReward || 500,
+        issuedAt: issueDate.toISOString()
+      };
+
+      localDB.saveIssuedCertificate(newCert);
+      setCert(newCert);
+    }
+  }, [isOpen, userId, courseId, studentName, courseTitle, instructorName, duration, xpReward, certSettings.chiefInstructorName]);
+
+  if (!isOpen) return null;
+  if (!cert) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+        <div className="text-center space-y-3">
+          <Loader2 className="animate-spin text-emerald-400 mx-auto" size={36} />
+          <p className="text-xs text-slate-400 font-mono">Gerando seu Certificado Único...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Use the loaded static certification parameters
+  const issueDateParsed = new Date(cert.issuedAt);
+  const formattedDate = issueDateParsed.toLocaleDateString('pt-BR', {
     day: '2-digit',
     month: 'long',
     year: 'numeric'
   });
 
-  const yearChar = issueDate.getFullYear().toString().slice(-2);
-  const monthChar = (issueDate.getMonth() + 1).toString().padStart(2, '0');
-  const studentPrefix = studentName.replace(/\s+/g, '').slice(0, 3).toUpperCase();
-  const coursePrefix = courseId.replace(/[^a-zA-Z]/g, '').slice(0, 3).toUpperCase() || 'CRSE';
-  const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-  const certificateId = `SV-${yearChar}${monthChar}-${studentPrefix}-${coursePrefix}-${randomSuffix}`;
+  const certificateId = cert.id;
 
   const handlePrint = () => {
     window.print();
   };
 
   const handleShare = () => {
-    const shareText = `Orgulho em compartilhar meu Certificado de Conclusão do curso "${courseTitle}" pela Savana XP! 🎓 Autenticação: ${certificateId}`;
+    const shareText = `Orgulho em compartilhar meu Certificado de Conclusão do curso "${cert.courseTitle}" pela Savana XP! 🎓 Autenticação/Validar ID: ${certificateId}`;
     navigator.clipboard.writeText(shareText);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const detailText = certSettings.detailedMetadata
-    .replace('{duration}', duration)
-    .replace('{xpReward}', `+${xpReward} XP`);
+    .replace('{duration}', cert.duration)
+    .replace('{xpReward}', `+${cert.xpReward} XP`);
 
   // Signatures mapping
   const directorSignInitial = certSettings.directorName.replace(/^Dr\.\s+/i, '');
-  const instructorAssigned = instructorName && instructorName !== "Coordenador Docente" 
-    ? instructorName 
-    : certSettings.chiefInstructorName;
+  const instructorAssigned = cert.instructorName;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">

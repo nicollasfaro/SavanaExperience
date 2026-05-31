@@ -370,6 +370,7 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
         <CertificateModal
           isOpen={!!selectedCertCourse}
           onClose={() => setSelectedCertCourse(null)}
+          userId={user.userId}
           studentName={user.name}
           courseTitle={selectedCertCourse.title}
           instructorName={selectedCertCourse.instructorName || "Coordenador Docente"}

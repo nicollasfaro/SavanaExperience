@@ -198,4 +198,17 @@ export interface CertificateSettings {
   detailedMetadata: string;
 }
 
+export interface IssuedCertificate {
+  id: string; // Verification key: e.g. "SV-2605-STU-COR-9876"
+  userId: string;
+  userName: string;
+  courseId: string;
+  courseTitle: string;
+  instructorName: string;
+  duration: string;
+  xpReward: number;
+  issuedAt: string;
+}
+
+
 
