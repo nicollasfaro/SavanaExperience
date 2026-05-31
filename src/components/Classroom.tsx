@@ -533,6 +533,7 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
     const updatedModule = {
       ...selectedModuleForRoom,
       isLive: false,
+      isLiveClass: true,
       liveRoomId: undefined,
       liveTeacherId: undefined
     };
@@ -1485,6 +1486,7 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
                                           const updated = {
                                             ...mod,
                                             isLive: true,
+                                            isLiveClass: true,
                                             liveRoomId: roomId,
                                             liveTeacherId: currentUserId
                                           };

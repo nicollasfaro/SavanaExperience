@@ -50,6 +50,7 @@ export interface CourseModule {
   order: number;
   lessons: Lesson[];
   isLive?: boolean;
+  isLiveClass?: boolean;
   liveDate?: string;
   liveRoomId?: string;
   liveTeacherId?: string;

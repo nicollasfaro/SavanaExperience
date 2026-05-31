@@ -2191,7 +2191,7 @@ export default function App() {
                 {/* Certificate Banner (if course concluded 100%) */}
                 {(() => {
                   const courseModules = modules.filter(m => m.courseId === selectedCourse.id);
-                  const lessons = courseModules.flatMap(m => m.isLive 
+                  const lessons = courseModules.flatMap(m => (m.isLiveClass || m.isLive) 
                     ? [{ 
                         id: `live-session-${m.id}`, 
                         moduleId: m.id, 
@@ -2204,7 +2204,16 @@ export default function App() {
                     : (m.lessons || [])
                   );
                   const prog = userProgress.find(p => p.courseId === selectedCourse.id);
-                  const completedLessonsCount = lessons.filter(l => prog?.completedLessons.includes(l.id)).length;
+                  const completedLessonsCount = lessons.filter(l => {
+                    if (l.id.startsWith('live-session-')) {
+                      const modId = l.id.replace('live-session-', '');
+                      const mod = courseModules.find(m => m.id === modId);
+                      if (mod && (mod.isLiveClass || mod.isLive) && !mod.isLive) {
+                        return true;
+                      }
+                    }
+                    return prog?.completedLessons.includes(l.id);
+                  }).length;
                   const totalLessonsCount = lessons.length;
                   const isFinished = totalLessonsCount > 0 && completedLessonsCount === totalLessonsCount;
 
@@ -2258,7 +2267,7 @@ export default function App() {
                   <div className="space-y-4 text-left">
                     {localDB.getModules().filter(m => m.courseId === selectedCourse.id).map(mod => {
                       const prog = userProgress.find(p => p.courseId === selectedCourse.id);
-                      const isLiveCompleted = mod.isLive && prog?.completedLessons.includes(`live-session-${mod.id}`);
+                      const isLiveCompleted = (mod.isLiveClass || mod.isLive) && (prog?.completedLessons.includes(`live-session-${mod.id}`) || !mod.isLive);
 
                       return (
                         <div key={mod.id} className="space-y-2 border-b border-slate-900/60 pb-3 last:border-none">
@@ -2266,15 +2275,19 @@ export default function App() {
                             <span className="block text-[10px] uppercase font-mono tracking-wider font-semibold text-emerald-400">
                               {mod.title}
                             </span>
-                            {mod.isLive && (
+                            {(mod.isLiveClass || mod.isLive) && (
                               <div className="flex flex-col gap-0.5 mt-1">
                                 {isLiveCompleted ? (
                                   <span className="inline-flex items-center gap-1 text-[9px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 font-bold px-2 py-0.5 rounded font-mono uppercase w-fit">
                                     ✓ Presença Registrada & Aula Concluída
                                   </span>
-                                ) : (
+                                ) : mod.isLive ? (
                                   <span className="inline-flex items-center gap-1 text-[9px] bg-red-500/15 text-red-400 border border-red-500/20 font-bold px-2 py-0.5 rounded font-mono uppercase w-fit animate-pulse">
-                                    🔴 Aula Ao Vivo
+                                    🔴 Aula Ao Vivo (Transmitindo)
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-[9px] bg-slate-500/15 text-slate-400 border border-slate-500/20 font-bold px-2 py-0.5 rounded font-mono uppercase w-fit">
+                                    Aula Ao Vivo (Finalizada)
                                   </span>
                                 )}
                                 {mod.liveDate && (
@@ -2287,10 +2300,35 @@ export default function App() {
                           </div>
                         
                         <div className="space-y-2 pt-1.5">
-                          {mod.isLive ? (
+                          {(mod.isLiveClass || mod.isLive) ? (
                             (() => {
                               const now = new Date();
                               const liveDateObj = mod.liveDate ? new Date(mod.liveDate) : null;
+
+                              if (isLiveCompleted) {
+                                return (
+                                  <div className="w-full flex items-center justify-between p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-400 font-sans">
+                                    <div className="flex items-center gap-2">
+                                      <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />
+                                      <div>
+                                        <span className="font-bold text-[10px] block uppercase tracking-wider">Presença Confirmada</span>
+                                        <span className="text-[9px] opacity-75 block">Parabéns por participar desta aula!</span>
+                                      </div>
+                                    </div>
+                                    <span className="text-[10px] bg-emerald-500/20 text-emerald-350 px-2 py-0.5 rounded font-mono font-bold">+200 XP</span>
+                                  </div>
+                                );
+                              }
+
+                              if (!mod.isLive) {
+                                return (
+                                  <div className="w-full p-3 rounded-xl border border-slate-800 bg-slate-950/40 text-slate-400 text-xs font-semibold text-center italic font-sans select-none flex items-center justify-center gap-1.5">
+                                    <span className="h-2 w-2 rounded-full bg-slate-600"></span>
+                                    Transmissão Off-line / Aula Encerrada
+                                  </div>
+                                );
+                              }
+
                               if (!liveDateObj) return null;
 
                               const isSameDay = now.getFullYear() === liveDateObj.getFullYear() &&

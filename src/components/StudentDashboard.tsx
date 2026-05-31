@@ -149,7 +149,7 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
                 const progressList = localDB.getProgress(user.userId);
                 const prog = progressList.find(p => p.courseId === course.id);
                 const courseModules = localDB.getModules().filter(m => m.courseId === course.id);
-                const lessons = courseModules.flatMap(m => m.isLive 
+                const lessons = courseModules.flatMap(m => (m.isLiveClass || m.isLive) 
                   ? [{ 
                       id: `live-session-${m.id}`, 
                       moduleId: m.id, 
@@ -161,7 +161,16 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
                     }] 
                   : (m.lessons || [])
                 );
-                const completedCount = lessons.filter(l => prog?.completedLessons.includes(l.id)).length;
+                const completedCount = lessons.filter(l => {
+                  if (l.id.startsWith('live-session-')) {
+                    const modId = l.id.replace('live-session-', '');
+                    const mod = courseModules.find(m => m.id === modId);
+                    if (mod && (mod.isLiveClass || mod.isLive) && !mod.isLive) {
+                      return true;
+                    }
+                  }
+                  return prog?.completedLessons.includes(l.id);
+                }).length;
                 const totalLessonsCount = lessons.length;
                 const isCourseCompleted = totalLessonsCount > 0 && completedCount === totalLessonsCount;
                 const percent = totalLessonsCount > 0 ? Math.round((completedCount / totalLessonsCount) * 100) : 0;

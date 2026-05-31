@@ -160,6 +160,7 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
           title: modTitle,
           description: modDesc,
           isLive: modIsLive,
+          isLiveClass: modIsLive,
           liveDate: modIsLive ? modLiveDate : undefined,
           lessons: modIsLive ? [] : editingModule.lessons,
         };
@@ -174,6 +175,7 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
           description: modDesc,
           order: courseModules.length + 1,
           isLive: modIsLive,
+          isLiveClass: modIsLive,
           liveDate: modIsLive ? modLiveDate : undefined,
           lessons: modIsLive ? [] : [
             {
