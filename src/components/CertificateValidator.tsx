@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Award, ShieldCheck, ShieldAlert, Search, X, Calendar, User, Clock, CheckCircle2, Sparkles, HelpCircle } from 'lucide-react';
 import { localDB } from '../firebase';
 import { IssuedCertificate } from '../types';
@@ -15,6 +15,33 @@ export function CertificateValidator({ isOpen, onClose }: CertificateValidatorPr
     status: 'idle' | 'valid' | 'invalid';
     certificate?: IssuedCertificate;
   }>({ status: 'idle' });
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const validateId = params.get('validate');
+    if (validateId) {
+      setCertCode(validateId);
+      setIsValidating(true);
+      setResult({ status: 'idle' });
+
+      const timer = setTimeout(async () => {
+        try {
+          const certificate = await localDB.validateCertificate(validateId);
+          if (certificate) {
+            setResult({ status: 'valid', certificate });
+          } else {
+            setResult({ status: 'invalid' });
+          }
+        } catch (err) {
+          console.error(err);
+          setResult({ status: 'invalid' });
+        } finally {
+          setIsValidating(false);
+        }
+      }, 900);
+      return () => clearTimeout(timer);
+    }
+  }, []);
 
   if (!isOpen) return null;
 

@@ -230,7 +230,7 @@ export function CertificateModal({
           </div>
 
           {/* Certificate Footer Stamp & Signatures */}
-          <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-6 items-end mt-4 pt-6 border-t border-slate-900/80 relative z-10">
+          <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 items-end mt-4 pt-6 border-t border-slate-900/80 relative z-10">
             
             {/* Signature 1 */}
             <div className="flex flex-col items-center text-center space-y-1">
@@ -256,6 +256,21 @@ export function CertificateModal({
               </div>
               <span className="text-[8px] font-mono text-slate-500 mt-2 block tracking-widest leading-none">
                 REGISTRO N° {certificateId.slice(3, 11)}
+              </span>
+            </div>
+
+            {/* Validation QR Code */}
+            <div className="flex flex-col items-center justify-center space-y-1.5 border-none">
+              <div className="p-1 px-[5px] bg-white rounded-lg shadow-md border border-slate-800 shrink-0">
+                <img 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`${window.location.origin}?validate=${certificateId}`)}`}
+                  alt="QR Code de Autenticidade"
+                  className="w-16 h-16 sm:w-16 sm:h-16"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+              <span className="text-[7px] font-mono text-slate-500 uppercase tracking-widest font-black leading-none">
+                Código QR de Validação
               </span>
             </div>
 

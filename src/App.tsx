@@ -525,6 +525,15 @@ export default function App() {
     };
   }, []);
 
+  // Auto-open Certificate Validator if a validation token is present in the URL query parameters (e.g. following QR code scan)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const validateId = params.get('validate');
+    if (validateId) {
+      setShowCertificateValidator(true);
+    }
+  }, []);
+
   // Listen for progress & enrollment changes when currentUserId changes
   useEffect(() => {
     if (!currentUserId) return;

@@ -14,8 +14,11 @@ interface LeaderboardProps {
 }
 
 export function Leaderboard({ currentUserId, users }: LeaderboardProps) {
-  // Sort users by XP descending
-  const sortedUsers = [...users].sort((a, b) => b.xp - a.xp);
+  // Filter out instructors/professors, only students should appear on the ranking page
+  const studentsOnly = users.filter((u) => u.role === 'student');
+
+  // Sort student users by XP descending
+  const sortedUsers = [...studentsOnly].sort((a, b) => b.xp - a.xp);
 
   // Helper to map string icon inside Lucide
   const renderBadgeIcon = (iconName: string, size = 18) => {

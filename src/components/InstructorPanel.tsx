@@ -42,8 +42,8 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
     };
   }, []);
 
-  // Filter allowed classes
-  const allowedTurmas = turmas.filter(t => isSystemAdmin || t.instructorId === currentUserId);
+  // Filter allowed classes - only display class if the teacher is assigned to it
+  const allowedTurmas = turmas.filter(t => t.instructorId === currentUserId);
   const [selectedTurmaId, setSelectedTurmaId] = useState<string>('');
 
   // Sync selectedTurmaId when allowed changes
