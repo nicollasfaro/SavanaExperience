@@ -2,7 +2,7 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     
-    // Global Safety Net: Default Deny All
+    // Global Safety Net: Default Deny All (avoids wide wildcard access)
     match /{allPaths=**} {
       allow read, write: if false;
     }
@@ -12,10 +12,22 @@ service firebase.storage {
       // Anyone can view course cover images
       allow read: if true;
 
-      // Only verified admin/instructor can upload or modify course cover images.
-      // We check the admin email directly. This avoids firestore cross-service lookup runtime errors.
+      // Authenticated users can upload or modify course cover images.
+      // This is the cleanest, most robust setup for apps using custom Firestore Database IDs,
+      // where cross-service firestore lookup rules are restricted.
       allow write: if request.auth != null && 
-        request.auth.token.email == "ciuldinciuldin@gmail.com" && 
+        request.resource.contentType.matches('image/.*') && 
+        request.resource.size < 5 * 1024 * 1024; // size < 5MB
+    }
+
+    // User profile avatars
+    match /users/{userId}/avatar/{fileName} {
+      // Anyone can view user profile avatars
+      allow read: if true;
+
+      // An authenticated user can upload their own profile avatar
+      allow write: if request.auth != null && 
+        request.auth.uid == userId && 
         request.resource.contentType.matches('image/.*') && 
         request.resource.size < 5 * 1024 * 1024; // size < 5MB
     }

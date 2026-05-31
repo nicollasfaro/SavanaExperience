@@ -8,8 +8,9 @@ import { localDB, uploadCourseThumbnail, auth, db } from '../firebase';
 import { 
   Shield, User, UserCheck, UserX, Search, Mail, Award, Sparkles, Filter,
   Plus, Edit, Trash2, Calendar, BookOpen, Layers, Users, Upload, Image, Loader2,
-  Database, RefreshCw, CheckCircle2, AlertCircle
+  Database, RefreshCw, CheckCircle2, AlertCircle, AlertTriangle, X, FileText
 } from 'lucide-react';
+import { CertificateSettingsPanel } from './CertificateSettingsPanel';
 
 interface AdminPanelProps {
   allUsers: LeaderboardUser[];
@@ -20,7 +21,7 @@ interface AdminPanelProps {
 
 export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: initialCourses }: AdminPanelProps) {
   // Navigation tabs state
-  const [adminTab, setAdminTab] = useState<'users' | 'turmas' | 'courses' | 'sync' | 'rewards' | 'finance'>('users');
+  const [adminTab, setAdminTab] = useState<'users' | 'turmas' | 'courses' | 'sync' | 'rewards' | 'finance' | 'certificates'>('users');
 
   // 1. Users management states
   const [searchTerm, setSearchTerm] = useState('');
@@ -57,6 +58,9 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
   const [courseDuration, setCourseDuration] = useState('20 horas');
   const [courseFormat, setCourseFormat] = useState<'online' | 'recorded' | 'presencial'>('online');
   const [courseIsPublished, setCourseIsPublished] = useState(true);
+  const [courseSaleType, setCourseSaleType] = useState<'website' | 'whatsapp'>('website');
+  const [courseWhatsappNumber, setCourseWhatsappNumber] = useState('');
+  const [courseShowStudents, setCourseShowStudents] = useState(true);
   
   // Track specific course ID for asset mapping, plus Upload states
   const [modalCourseId, setModalCourseId] = useState('');
@@ -81,6 +85,13 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
 
   // Toast notifications for a smooth experience without blocking alerts
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  const [confirmConfig, setConfirmConfig] = useState<{
+    title: string;
+    description: string;
+    confirmText: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ message, type });
@@ -148,25 +159,23 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
       return;
     }
     
-    let wantsDelete = false;
-    try {
-      wantsDelete = confirm("Tem certeza absoluta que deseja excluir este usuário? Esta ação não pode ser desfeita.");
-    } catch (e) {
-      console.warn("Confirm blocked, proceeding by default");
-      wantsDelete = true;
-    }
-    
-    if (wantsDelete) {
-      setUpdatingUserId(user.userId);
-      try {
-        await localDB.deleteUser(user.userId);
-        showToast("Usuário excluído com sucesso!");
-      } catch (err) {
-        showToast("Não foi possível excluir o usuário.", "error");
-      } finally {
-        setUpdatingUserId(null);
+    setConfirmConfig({
+      title: "Excluir Usuário",
+      description: `Tem certeza absoluta que deseja excluir o usuário "${user.name}"? Esta ação removerá o perfil e a pontuação permanentemente.`,
+      confirmText: "Confirmar Exclusão",
+      onConfirm: async () => {
+        setConfirmConfig(null);
+        setUpdatingUserId(user.userId);
+        try {
+          await localDB.deleteUser(user.userId);
+          showToast("Usuário excluído com sucesso!");
+        } catch (err) {
+          showToast("Não foi possível excluir o usuário.", "error");
+        } finally {
+          setUpdatingUserId(null);
+        }
       }
-    }
+    });
   };
 
   const handleToggleRole = async (user: LeaderboardUser) => {
@@ -242,20 +251,23 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
 
   // Delete Turma
   const handleDeleteTurma = async (turmaId: string) => {
-    let wantsDelete = true;
-    try {
-      wantsDelete = confirm("Tem certeza absoluta que deseja excluir esta turma? Esta ação não pode ser desfeita.");
-    } catch (e) {
-      console.warn("Confirm blocked, proceeding by default");
-    }
-    if (wantsDelete) {
-      try {
-        await localDB.deleteTurma(turmaId);
-        showToast("Turma excluída com sucesso!");
-      } catch (err) {
-        showToast("Erro ao excluir turma.", "error");
+    const targetTurma = turmas.find(t => t.id === turmaId);
+    const turmaName = targetTurma ? targetTurma.name : "esta turma";
+
+    setConfirmConfig({
+      title: "Excluir Turma",
+      description: `Tem certeza absoluta que deseja excluir a turma "${turmaName}"? Esta ação removerá a regência de turma e os alunos vinculados perderão o acesso a ela.`,
+      confirmText: "Confirmar Exclusão",
+      onConfirm: async () => {
+        setConfirmConfig(null);
+        try {
+          await localDB.deleteTurma(turmaId);
+          showToast("Turma excluída com sucesso!");
+        } catch (err) {
+          showToast("Erro ao excluir turma.", "error");
+        }
       }
-    }
+    });
   };
 
   // FILTERS FOR COURSES
@@ -284,6 +296,9 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
     setCourseDuration('24 horas');
     setCourseFormat('online');
     setCourseIsPublished(true);
+    setCourseSaleType('website');
+    setCourseWhatsappNumber('');
+    setCourseShowStudents(true);
     
     // Clear upload states
     setUploadPercent(null);
@@ -309,6 +324,9 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
     setCourseDuration(c.totalDuration || '20 horas');
     setCourseFormat(c.format || 'online');
     setCourseIsPublished(c.isPublished !== false);
+    setCourseSaleType(c.saleType || 'website');
+    setCourseWhatsappNumber(c.whatsappNumber || '');
+    setCourseShowStudents(c.showStudentsCount !== false);
 
     // Clear upload states
     setUploadPercent(null);
@@ -324,6 +342,11 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
     e.preventDefault();
     if (!courseTitle.trim() || !courseCategory.trim() || !courseInstructorName.trim()) {
       showToast("Por favor preencha todos os campos obrigatórios.", "error");
+      return;
+    }
+
+    if (courseSaleType === 'whatsapp' && !courseWhatsappNumber.trim()) {
+      showToast("Por favor preencha o número de celular do WhatsApp.", "error");
       return;
     }
 
@@ -343,7 +366,10 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
       enrolledCount: editingCourse ? (editingCourse.enrolledCount || 0) : 0,
       rating: editingCourse ? (editingCourse.rating || 4.8) : 4.8,
       isPublished: courseIsPublished,
-      format: courseFormat || 'online'
+      format: courseFormat || 'online',
+      saleType: courseSaleType,
+      whatsappNumber: courseSaleType === 'whatsapp' ? courseWhatsappNumber : '',
+      showStudentsCount: courseShowStudents
     };
 
     try {
@@ -405,16 +431,20 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
   };
 
   const handleDeleteReward = async (r: any) => {
-    let confirmDel = false;
-    try { confirmDel = confirm(`Excluir recompensa ${r.title}?`); } catch(e) { confirmDel = true; }
-    if(confirmDel) {
-      try {
-        await localDB.deleteReward(r.id);
-        showToast("Recompensa removida!");
-      } catch(err) {
-        showToast("Falha ao remover.", "error");
+    setConfirmConfig({
+      title: "Excluir Recompensa",
+      description: `Tem certeza que deseja excluir a recompensa "${r.title}"? Ela será removida da vitrine da loja XP Savana.`,
+      confirmText: "Confirmar Exclusão",
+      onConfirm: async () => {
+        setConfirmConfig(null);
+        try {
+          await localDB.deleteReward(r.id);
+          showToast("Recompensa removida!");
+        } catch(err) {
+          showToast("Falha ao remover.", "error");
+        }
       }
-    }
+    });
   };
 
   // Drag and Drop & File Upload handlers
@@ -497,20 +527,23 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
 
   // Delete Course
   const handleDeleteCourse = async (courseId: string) => {
-    let wantsDelete = true;
-    try {
-      wantsDelete = confirm("Tem certeza absoluta que deseja excluir este curso? Esta ação não pode ser desfeita e os dados no Firestore serão removidos.");
-    } catch (e) {
-      console.warn("Confirm blocked, proceeding by default");
-    }
-    if (wantsDelete) {
-      try {
-        await localDB.deleteCourse(courseId);
-        showToast("Curso excluído com sucesso!");
-      } catch (err) {
-        showToast("Erro ao excluir curso.", "error");
+    const targetCourse = adminCourses.find(c => c.id === courseId);
+    const courseTitle = targetCourse ? targetCourse.title : "este curso";
+
+    setConfirmConfig({
+      title: "Excluir Curso",
+      description: `Tem certeza absoluta que deseja excluir o curso "${courseTitle}"? Esta ação removerá o curso, suas aulas, módulos e dados vinculados no Firestore de forma definitiva.`,
+      confirmText: "Confirmar Exclusão",
+      onConfirm: async () => {
+        setConfirmConfig(null);
+        try {
+          await localDB.deleteCourse(courseId);
+          showToast("Curso excluído com sucesso!");
+        } catch (err) {
+          showToast("Erro ao excluir curso.", "error");
+        }
       }
-    }
+    });
   };
 
   return (
@@ -632,6 +665,19 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
         >
           <Database size={14} />
           Relatório Financeiro
+        </button>
+
+        <button
+          id="admin-tab-certificates"
+          onClick={() => setAdminTab('certificates')}
+          className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg transition ${
+            adminTab === 'certificates' 
+              ? 'bg-blue-500 text-slate-950 font-bold shadow-md' 
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <FileText size={14} />
+          Configurar Certificados
         </button>
 
         <button
@@ -1052,27 +1098,33 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                     </div>
 
                     {/* Action buttons drawer */}
-                    <div className="flex items-center justify-between border-t border-slate-900 pt-3 mt-2 text-xs">
-                      <span className="text-[9px] font-mono text-slate-500">
-                        xp: {c.xpReward} • {c.enrolledCount} alunos
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          id={`btn-edit-course-${c.id}`}
-                          onClick={() => handleOpenEditCourse(c)}
-                          className="p-2 bg-slate-900 border border-slate-850 text-slate-400 hover:text-blue-400 hover:border-blue-500/30 rounded-lg transition"
-                          title="Editar Curso"
-                        >
-                          <Edit size={14} />
-                        </button>
-                        <button
-                          id={`btn-delete-course-${c.id}`}
-                          onClick={() => handleDeleteCourse(c.id)}
-                          className="p-2 bg-slate-900 border border-slate-850 text-slate-400 hover:text-red-400 hover:border-red-500/30 rounded-lg transition"
-                          title="Excluir Curso"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                    <div className="flex flex-col gap-2 border-t border-slate-900 pt-3 mt-2">
+                      <div className="flex items-center justify-between text-[10px] font-mono text-slate-405">
+                        <span>XP total: <strong className="text-slate-300">+{c.xpReward} XP</strong></span>
+                        <span>Alunos: <strong className="text-slate-300">{c.enrolledCount}</strong> <span className="text-slate-500 text-[9px]">{c.showStudentsCount === false ? '(Oculto no site)' : '(Visível no site)'}</span></span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-900/40">
+                        <span className="text-[10px] font-mono text-slate-450">
+                          Venda: <strong className={`font-mono font-bold uppercase tracking-wide ${c.saleType === 'whatsapp' ? 'text-emerald-400 bg-emerald-500/5 border border-emerald-500/10 px-1.5 py-0.5 rounded' : 'text-blue-400 bg-blue-500/5 border border-blue-500/10 px-1.5 py-0.5 rounded'}`}>{c.saleType === 'whatsapp' ? 'WhatsApp' : 'Website'}</strong>
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            id={`btn-edit-course-${c.id}`}
+                            onClick={() => handleOpenEditCourse(c)}
+                            className="p-2 bg-slate-900 border border-slate-850 text-slate-400 hover:text-blue-400 hover:border-blue-500/30 rounded-lg transition"
+                            title="Editar Curso"
+                          >
+                            <Edit size={14} />
+                          </button>
+                          <button
+                            id={`btn-delete-course-${c.id}`}
+                            onClick={() => handleDeleteCourse(c.id)}
+                            className="p-2 bg-slate-900 border border-slate-850 text-slate-400 hover:text-red-400 hover:border-red-500/30 rounded-lg transition"
+                            title="Excluir Curso"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1485,6 +1537,88 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                 </div>
               </div>
 
+              {/* Canais de Venda & Visualização de Alunos */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Canal de Venda */}
+                <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-850">
+                  <label className="block text-[10px] uppercase tracking-wider font-mono text-slate-400 mb-2">Canal de Venda *</label>
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-200">
+                      <input
+                        id="modal-sale-type-website"
+                        type="radio"
+                        name="course-sale-type"
+                        value="website"
+                        checked={courseSaleType === 'website'}
+                        onChange={() => setCourseSaleType('website')}
+                        className="w-4 h-4 text-blue-500 bg-slate-900 border-slate-800 focus:ring-blue-500 focus:ring-offset-slate-900"
+                      />
+                      Vender via Website
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-200">
+                      <input
+                        id="modal-sale-type-whatsapp"
+                        type="radio"
+                        name="course-sale-type"
+                        value="whatsapp"
+                        checked={courseSaleType === 'whatsapp'}
+                        onChange={() => setCourseSaleType('whatsapp')}
+                        className="w-4 h-4 text-blue-500 bg-slate-900 border-slate-800 focus:ring-blue-500 focus:ring-offset-slate-900"
+                      />
+                      Vender via WhatsApp
+                    </label>
+                  </div>
+                </div>
+
+                {/* Exibir bbb de Alunos */}
+                <div className="flex items-center gap-3 bg-slate-950 p-3.5 rounded-xl border border-slate-850">
+                  <input
+                    id="modal-course-show-students-chk"
+                    type="checkbox"
+                    checked={courseShowStudents}
+                    onChange={(e) => setCourseShowStudents(e.target.checked)}
+                    className="w-4 h-4 text-blue-500 bg-slate-900 border-slate-800 rounded focus:ring-blue-500 shrink-0"
+                  />
+                  <div>
+                    <label htmlFor="modal-course-show-students-chk" className="block text-xs font-bold text-slate-200 cursor-pointer">Mostrar Total de Alunos</label>
+                    <span className="text-[10px] text-slate-500 font-mono">Controla a exibição do contador de alunos para este curso.</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Celular do Whatsapp se selecionado */}
+              {courseSaleType === 'whatsapp' && (
+                <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-850 space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label htmlFor="modal-whatsapp-number" className="block text-[10px] uppercase tracking-wider font-mono text-emerald-400 font-bold">Número do Celular WhatsApp *</label>
+                    <span className="text-[9px] text-slate-500 font-mono">Formato: (xx) xxxxx-xxxx</span>
+                  </div>
+                  <input
+                    id="modal-whatsapp-number"
+                    type="text"
+                    value={courseWhatsappNumber}
+                    onChange={(e) => {
+                      let val = e.target.value.replace(/\D/g, '');
+                      if (val.length > 11) val = val.slice(0, 11);
+                      if (val.length > 6) {
+                        val = `(${val.slice(0, 2)}) ${val.slice(2, 7)}-${val.slice(7)}`;
+                      } else if (val.length > 2) {
+                        val = `(${val.slice(0, 2)}) ${val.slice(2)}`;
+                      } else if (val.length > 0) {
+                        val = `(${val}`;
+                      }
+                      setCourseWhatsappNumber(val);
+                    }}
+                    placeholder="(21) 97147-7755"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-650 focus:outline-none focus:border-emerald-500"
+                    required
+                  />
+                  <p className="text-[10px] text-slate-500 leading-relaxed font-mono">
+                    Este número receberá as mensagens diretas de compra de vagas e inscrições via WhatsApp.
+                  </p>
+                </div>
+              )}
+
               {/* Publish Toggle */}
               <div className="flex items-center gap-3 bg-slate-950 p-3.5 rounded-xl border border-slate-850">
                 <input
@@ -1680,6 +1814,58 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
       {/* TAB 5: FINANCE REPORT */}
       {adminTab === 'finance' && (
         <FinanceReport />
+      )}
+
+      {/* TAB 6: CERTIFICATE CUSTOMIZATION SETTINGS */}
+      {adminTab === 'certificates' && (
+        <CertificateSettingsPanel />
+      )}
+
+      {/* Modal de confirmação geral estilizado com Tailwind */}
+      {confirmConfig && (
+        <div id="admin-generic-confirmation-modal" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm animate-fade-in animate-duration-200">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col">
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
+              <div className="flex items-center gap-2 text-red-450">
+                <AlertCircle size={20} className="text-red-500" />
+                <h3 className="font-display font-bold text-slate-100 text-base">{confirmConfig.title}</h3>
+              </div>
+              <button 
+                onClick={() => setConfirmConfig(null)}
+                className="p-1 hover:bg-slate-800 rounded-full text-slate-400 transition cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div className="p-6 text-center space-y-4">
+              <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto">
+                <AlertTriangle size={24} className="text-red-550" />
+              </div>
+              
+              <p className="text-xs text-slate-300 leading-relaxed max-w-sm mx-auto">
+                {confirmConfig.description}
+              </p>
+            </div>
+
+            <div className="p-4 border-t border-slate-800 flex items-center justify-end gap-3 bg-slate-950/50">
+              <button
+                type="button"
+                onClick={() => setConfirmConfig(null)}
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-850 hover:bg-slate-800 text-slate-350 transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmConfig.onConfirm}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-red-500 hover:bg-red-450 text-slate-950 transition cursor-pointer"
+              >
+                {confirmConfig.confirmText}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

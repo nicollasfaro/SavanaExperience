@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { Course } from '../types';
-import { Star, GraduationCap, Clock, Award } from 'lucide-react';
+import { Star, GraduationCap, Clock, Award, MessageCircle } from 'lucide-react';
 
 interface CourseCardProps {
   key?: string;
@@ -16,6 +16,17 @@ interface CourseCardProps {
 }
 
 export function CourseCard({ course, isRegistered, onSelect, onEnroll }: CourseCardProps) {
+  const getWhatsappLink = () => {
+    const defaultNumber = '5521971477755';
+    let rawPhone = course.whatsappNumber ? course.whatsappNumber.replace(/\D/g, '') : '';
+    if (!rawPhone) {
+      rawPhone = defaultNumber;
+    } else if (rawPhone.length === 10 || rawPhone.length === 11) {
+      rawPhone = '55' + rawPhone;
+    }
+    return `https://wa.me/${rawPhone}?text=${encodeURIComponent(`Olá! Tenho interesse em me matricular no curso "${course.title}". Como procedo com a inscrição?`)}`;
+  };
+
   return (
     <div id={`course-card-${course.id}`} className="flex flex-col bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl hover:border-emerald-500/50 transition-all duration-300 group">
       {/* Thumbnail Block */}
@@ -69,10 +80,12 @@ export function CourseCard({ course, isRegistered, onSelect, onEnroll }: CourseC
             <Clock size={13} />
             {course.totalDuration}
           </span>
-          <span className="flex items-center gap-1">
-            <GraduationCap size={13} />
-            {course.enrolledCount} alunos
-          </span>
+          {course.showStudentsCount !== false && (
+            <span className="flex items-center gap-1">
+              <GraduationCap size={13} />
+              {course.enrolledCount} alunos
+            </span>
+          )}
           <span className="flex items-center gap-0.5 text-amber-400 font-medium">
             <Star size={13} className="fill-amber-400" />
             {course.rating.toFixed(1)}
@@ -110,7 +123,7 @@ export function CourseCard({ course, isRegistered, onSelect, onEnroll }: CourseC
         {/* Pricing / CTA Section */}
         <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-800/80">
           <div>
-            <span className="block text-[10px] text-slate-500 uppercase tracking-widest">
+            <span className="block text-[10px] text-slate-500 uppercase tracking-widest font-mono">
               Investimento
             </span>
             <span className="text-lg font-display font-medium text-emerald-400">
@@ -131,17 +144,30 @@ export function CourseCard({ course, isRegistered, onSelect, onEnroll }: CourseC
               <button
                 id={`learn-more-btn-${course.id}`}
                 onClick={onSelect}
-                className="px-3 py-2 text-xs font-semibold rounded-xl bg-slate-800 text-slate-300 hover:text-slate-100 hover:bg-slate-700 transition-all duration-200"
+                className="px-3 py-2 text-xs font-semibold rounded-xl bg-slate-800 text-slate-300 hover:text-slate-300 hover:bg-slate-700 transition-all duration-200"
               >
                 Saiba mais
               </button>
-              <button
-                id={`enroll-btn-${course.id}`}
-                onClick={onEnroll}
-                className="px-4 py-2 text-xs font-semibold rounded-xl bg-emerald-500 text-slate-950 font-bold hover:bg-emerald-400 hover:shadow-lg hover:shadow-emerald-500/25 transition-all duration-200"
-              >
-                Matricular-se
-              </button>
+              {course.saleType === 'whatsapp' ? (
+                <a
+                  id={`enroll-btn-${course.id}`}
+                  href={getWhatsappLink()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 text-xs font-bold rounded-xl bg-emerald-500 text-slate-950 hover:bg-emerald-400 hover:shadow-lg hover:shadow-emerald-500/25 transition-all duration-200 flex items-center justify-center gap-1"
+                >
+                  <MessageCircle size={13} className="fill-slate-950 text-slate-950 shrink-0" />
+                  WhatsApp
+                </a>
+              ) : (
+                <button
+                  id={`enroll-btn-${course.id}`}
+                  onClick={onEnroll}
+                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-emerald-500 text-slate-950 font-bold hover:bg-emerald-400 hover:shadow-lg hover:shadow-emerald-500/25 transition-all duration-200"
+                >
+                  Matricular-se
+                </button>
+              )}
             </div>
           )}
         </div>

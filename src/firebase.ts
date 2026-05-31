@@ -9,10 +9,10 @@ import {
   deleteDoc, collection, onSnapshot, getDocFromServer,
   query, where
 } from 'firebase/firestore';
-import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, signInAnonymously } from 'firebase/auth';
+import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, signInAnonymously, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { Course, CourseModule, StudentProgress, ForumThread, ChatMessage, LeaderboardUser, Turma, Reward, Redemption } from './types';
-import { INITIAL_COURSES, INITIAL_MODULES, INITIAL_LEADERBOARD, INITIAL_DISCUSSION_THREADS, INITIAL_CHAT_MESSAGES, INITIAL_TURMAS } from './data';
+import { Course, CourseModule, StudentProgress, ForumThread, ChatMessage, LeaderboardUser, Turma, Reward, Redemption, CertificateSettings } from './types';
+import { INITIAL_COURSES, INITIAL_MODULES, INITIAL_LEADERBOARD, INITIAL_DISCUSSION_THREADS, INITIAL_CHAT_MESSAGES, INITIAL_TURMAS, INITIAL_CERTIFICATE_SETTINGS } from './data';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // Initialize Firebase
@@ -499,9 +499,40 @@ class StorageEngine {
       }
     );
     this.activeUnsubscribes.push(unsubRedemptions);
+
+    // Certificate Settings Sync
+    const unsubCertSettings = onSnapshot(doc(db, 'settings', 'certificates'), (docSnap) => {
+      if (docSnap.exists()) {
+        this.set('certificateSettings', docSnap.data() as CertificateSettings);
+      } else {
+        this.set('certificateSettings', INITIAL_CERTIFICATE_SETTINGS);
+      }
+      this.notify('certificateSettings');
+    }, (err) => {
+      console.warn("Certificate Settings Sync error: ", err.message);
+    });
+    this.activeUnsubscribes.push(unsubCertSettings);
   }
 
   // --- PUBLIC API WRAPPERS (Sync local fallback + Async push onto Firestore) ---
+
+  // Certificate Settings
+  getCertificateSettings(): CertificateSettings {
+    return this.get('certificateSettings', INITIAL_CERTIFICATE_SETTINGS);
+  }
+
+  async saveCertificateSettings(settings: CertificateSettings) {
+    this.set('certificateSettings', settings);
+    this.notify('certificateSettings');
+
+    if (!this.isFirebaseAuthenticated) return;
+
+    try {
+      await setDoc(doc(db, 'settings', 'certificates'), cleanUndefined(settings));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'settings/certificates');
+    }
+  }
 
   // Registrations (Course purchases tracking)
   getRegistrations(): string[] {
@@ -964,3 +995,157 @@ export async function uploadCourseThumbnail(courseId: string, file: File, onProg
     }
   });
 }
+
+export async function signUpUserWithEmailAndPassword(name: string, email: string, password: string, avatarUrlOrFile?: string | File): Promise<any> {
+  const credentials = await createUserWithEmailAndPassword(auth, email, password);
+  const user = credentials.user;
+  const fallbackAvatar = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80';
+  let finalAvatar = fallbackAvatar;
+
+  if (avatarUrlOrFile) {
+    if (avatarUrlOrFile instanceof File) {
+      try {
+        const fileExt = avatarUrlOrFile.name.split('.').pop() || 'png';
+        const fileName = `avatar_${Date.now()}.${fileExt}`;
+        const fileRef = ref(storage, `users/${user.uid}/avatar/${fileName}`);
+        
+        const uploadTask = uploadBytesResumable(fileRef, avatarUrlOrFile, {
+          contentType: avatarUrlOrFile.type
+        });
+
+        const downloadUrl = await new Promise<string>((resolve, reject) => {
+          uploadTask.on('state_changed', 
+            null, 
+            (error) => {
+              console.error('Avatar Upload Error during registration:', error);
+              reject(error);
+            }, 
+            async () => {
+              const url = await getDownloadURL(uploadTask.snapshot.ref);
+              resolve(url);
+            }
+          );
+        });
+        finalAvatar = downloadUrl;
+      } catch (uploadErr) {
+        console.error('File upload failed, falling back to basic fallback avatar:', uploadErr);
+      }
+    } else if (typeof avatarUrlOrFile === 'string') {
+      finalAvatar = avatarUrlOrFile;
+    }
+  }
+  
+  // To avoid 'Photo URL too long' error (which has a 2048 character limit in Firebase Auth profiles),
+  // we use a standard / short fallback url for auth.photoURL if the avatar is base64, but preserve the user's custom avatar in the Firestore db!
+  const authPhotoURL = (finalAvatar && finalAvatar.length < 1500) ? finalAvatar : fallbackAvatar;
+
+  await updateProfile(user, {
+    displayName: name,
+    photoURL: authPhotoURL
+  });
+
+  // Pre-seed leaderboard profile directly in Firestore
+  const userDocRef = doc(db, 'leaderboard', user.uid);
+  const defaultUser: LeaderboardUser = {
+    userId: user.uid,
+    name: name,
+    email: email,
+    avatar: finalAvatar,
+    xp: 0,
+    level: 1,
+    badges: ['badge-welcome'],
+    role: email === 'ciuldinciuldin@gmail.com' ? 'instructor' : 'student'
+  };
+
+  try {
+    await setDoc(userDocRef, defaultUser);
+    console.log('Pre-seeded email/password registration to Firebase:', email);
+  } catch (err) {
+    console.warn('Silent fallback: Pre-seeding email/password to Firebase failed:', err);
+  }
+
+  return user;
+}
+
+export async function signInUserWithEmailAndPassword(email: string, password: string): Promise<any> {
+  const credentials = await signInWithEmailAndPassword(auth, email, password);
+  return credentials.user;
+}
+
+export async function updateUserProfile(userId: string, name: string, avatarUrlOrFile?: string | File): Promise<{ name: string; avatar: string }> {
+  const user = auth.currentUser;
+  if (!user || user.uid !== userId) {
+    throw new Error('Not authenticated or unauthorized to update this profile');
+  }
+
+  const fallbackAvatar = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80';
+  let finalAvatar = user.photoURL || fallbackAvatar;
+
+  if (avatarUrlOrFile) {
+    if (avatarUrlOrFile instanceof File) {
+      try {
+        const fileExt = avatarUrlOrFile.name.split('.').pop() || 'png';
+        const fileName = `avatar_${Date.now()}.${fileExt}`;
+        const fileRef = ref(storage, `users/${user.uid}/avatar/${fileName}`);
+        
+        const uploadTask = uploadBytesResumable(fileRef, avatarUrlOrFile, {
+          contentType: avatarUrlOrFile.type
+        });
+
+        const downloadUrl = await new Promise<string>((resolve, reject) => {
+          uploadTask.on('state_changed', 
+            null, 
+            (error) => {
+              console.error('Avatar Upload Error during profile edit:', error);
+              reject(error);
+            }, 
+            async () => {
+              const url = await getDownloadURL(uploadTask.snapshot.ref);
+              resolve(url);
+            }
+          );
+        });
+        finalAvatar = downloadUrl;
+      } catch (uploadErr) {
+        console.error('File upload failed during profile edit:', uploadErr);
+        throw uploadErr;
+      }
+    } else if (typeof avatarUrlOrFile === 'string') {
+      finalAvatar = avatarUrlOrFile;
+    }
+  }
+
+  const authPhotoURL = (finalAvatar && finalAvatar.length < 1500) ? finalAvatar : fallbackAvatar;
+  await updateProfile(user, {
+    displayName: name,
+    photoURL: authPhotoURL
+  });
+
+  const userDocRef = doc(db, 'leaderboard', user.uid);
+  try {
+    const userSnap = await getDoc(userDocRef);
+    if (userSnap.exists()) {
+      await updateDoc(userDocRef, {
+        name: name,
+        avatar: finalAvatar
+      });
+    } else {
+      await setDoc(userDocRef, {
+        userId: user.uid,
+        name: name,
+        email: user.email || '',
+        avatar: finalAvatar,
+        xp: 0,
+        level: 1,
+        badges: ['badge-welcome'],
+        role: user.email === 'ciuldinciuldin@gmail.com' ? 'instructor' : 'student'
+      });
+    }
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `leaderboard/${user.uid}`);
+  }
+
+  return { name, avatar: finalAvatar };
+}
+
+

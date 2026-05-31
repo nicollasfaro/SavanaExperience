@@ -3,7 +3,17 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Course, CourseModule, Badge, ForumThread, LeaderboardUser, ChatMessage } from './types';
+import { Course, CourseModule, Badge, ForumThread, LeaderboardUser, ChatMessage, CertificateSettings } from './types';
+
+export const INITIAL_CERTIFICATE_SETTINGS: CertificateSettings = {
+  id: 'default',
+  institutionName: 'SAVANA XP • ACADEMY OF WILDLIFE MEDICINE',
+  certificateTitle: 'Certificado de Conclusão',
+  directorName: 'Dr. Alexandre Savana',
+  chiefInstructorName: 'Coordenador Docente',
+  textDescription: 'por ter concluído integral e satisfatoriamente todas as aulas, leituras técnicas, quizzes e avaliações práticas estipuladas na grade curricular do curso de especialização de:',
+  detailedMetadata: 'Comprovando aproveitamento proficiente com carga pedagógica total estimada em {duration} de atividades clínicas teóricas e práticas, totalizando o bônus de +{xpReward} XP na plataforma de formação de residentes.'
+};
 
 export const INITIAL_COURSES: Course[] = [];
 

@@ -332,6 +332,7 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [selectedModuleForRoom, setSelectedModuleForRoom] = useState<any | null>(null);
   const [localSpotlightId, setLocalSpotlightId] = useState<string | null>(null);
+  const [showTerminateLiveConfirm, setShowTerminateLiveConfirm] = useState(false);
 
   // Synchronize dynamic databases in real-time
   useEffect(() => {
@@ -505,20 +506,24 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
 
   const handleTerminateLiveRoom = async () => {
     if (!selectedModuleForRoom) return;
-    if (window.confirm("Deseja realmente encerrar esta transmissão ao vivo e fechar a sala para todos os alunos?")) {
-      const updatedModule = {
-        ...selectedModuleForRoom,
-        isLive: false,
-        liveRoomId: undefined,
-        liveTeacherId: undefined
-      };
-      await localDB.saveModule(updatedModule);
-      
-      setActiveRoomId(null);
-      setSelectedModuleForRoom(null);
-      setLocalSpotlightId(null);
-      triggerToast("Aula ao vivo finalizada com sucesso!");
-    }
+    setShowTerminateLiveConfirm(true);
+  };
+
+  const handleTerminateLiveRoomConfirm = async () => {
+    if (!selectedModuleForRoom) return;
+    const updatedModule = {
+      ...selectedModuleForRoom,
+      isLive: false,
+      liveRoomId: undefined,
+      liveTeacherId: undefined
+    };
+    await localDB.saveModule(updatedModule);
+    
+    setActiveRoomId(null);
+    setSelectedModuleForRoom(null);
+    setLocalSpotlightId(null);
+    setShowTerminateLiveConfirm(false);
+    triggerToast("Aula ao vivo finalizada com sucesso!");
   };
 
   const handleLeaveRoom = async () => {
@@ -2804,6 +2809,58 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
         </div>
 
       </div>
+
+      {/* Modal de confirmação para encerrar live */}
+      {showTerminateLiveConfirm && (
+        <div id="terminate-live-confirmation-modal" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in animate-duration-200">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col">
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
+              <div className="flex items-center gap-2 text-red-500">
+                <AlertCircle size={20} />
+                <h3 className="font-display font-bold text-slate-100 text-base">Encerrar Transmissão</h3>
+              </div>
+              <button 
+                onClick={() => setShowTerminateLiveConfirm(false)}
+                className="p-1 hover:bg-slate-800 rounded-full text-slate-400 transition cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div className="p-6 text-center space-y-4">
+              <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto text-red-500 animate-pulse">
+                <Tv size={24} />
+              </div>
+              
+              <div className="space-y-1">
+                <h4 className="text-slate-100 font-bold text-base">Deseja mesmo finalizar a aula?</h4>
+                <p className="text-[11px] text-slate-400 font-mono">Esta ação fechará a transmissão síncrona</p>
+              </div>
+
+              <p className="text-xs text-slate-350 leading-relaxed max-w-sm mx-auto">
+                Deseja realmente encerrar esta transmissão ao vivo e fechar a sala para todos os alunos conectados? Eles perderão a conexão síncrona e a sala será dada como encerrada.
+              </p>
+            </div>
+
+            <div className="p-4 border-t border-slate-800 flex items-center justify-end gap-3 bg-slate-950/50">
+              <button
+                type="button"
+                onClick={() => setShowTerminateLiveConfirm(false)}
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-850 hover:bg-slate-800 text-slate-300 transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleTerminateLiveRoomConfirm}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-red-500 hover:bg-red-450 text-slate-950 transition cursor-pointer"
+              >
+                Encerrar Transmissão
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

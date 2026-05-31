@@ -30,6 +30,9 @@ export interface Course {
   liveMeetLink?: string;
   liveClassDate?: string;
   createdAt?: string;
+  saleType?: 'website' | 'whatsapp';
+  whatsappNumber?: string;
+  showStudentsCount?: boolean;
 }
 
 export interface CourseModule {
@@ -184,4 +187,15 @@ export interface Redemption {
   redeemedAt: string;
   status: 'pending' | 'delivered';
 }
+
+export interface CertificateSettings {
+  id: string; // e.g. "default"
+  institutionName: string;
+  certificateTitle: string;
+  directorName: string;
+  chiefInstructorName: string;
+  textDescription: string;
+  detailedMetadata: string;
+}
+
 

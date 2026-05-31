@@ -115,14 +115,17 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
   const avgXP = Math.round(classStudents.reduce((acc, s) => acc + s.xp, 0) / (classStudents.length || 1));
   const classGrade = (classStudents.reduce((acc, s) => acc + (s.level * 14.5), 0) / (classStudents.length || 1)).toFixed(1);
 
-  const handleRemoveStudent = async (studentId: string) => {
-    if (!selectedTurma || !confirm('Tem certeza que deseja remover este aluno da turma?')) return;
+  const [studentToRemove, setStudentToRemove] = useState<LeaderboardUser | null>(null);
+
+  const handleRemoveStudentConfirm = async () => {
+    if (!selectedTurma || !studentToRemove) return;
     
-    const updatedStudentIds = (selectedTurma.studentIds || []).filter(id => id !== studentId);
+    const updatedStudentIds = (selectedTurma.studentIds || []).filter(id => id !== studentToRemove.userId);
     const updatedTurma = { ...selectedTurma, studentIds: updatedStudentIds };
     
     // Save to localDB
     await localDB.saveTurma(updatedTurma);
+    setStudentToRemove(null);
   };
 
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
@@ -808,7 +811,7 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
                       </td>
                       <td className="p-4 text-right">
                         <button
-                          onClick={() => handleRemoveStudent(student.userId)}
+                          onClick={() => setStudentToRemove(student)}
                           className="px-2 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded border border-red-500/20 text-[10px] transition font-semibold"
                           title="Remover aluno da turma"
                         >
@@ -1662,6 +1665,66 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
                   Confirmar e Adicionar
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Remoção de Aluno */}
+      {studentToRemove && (
+        <div id="remove-student-confirmation-modal" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col">
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
+              <div className="flex items-center gap-2 text-red-400">
+                <AlertCircle size={20} />
+                <h3 className="font-display font-bold text-slate-100 text-base">Remover Aluno</h3>
+              </div>
+              <button 
+                onClick={() => setStudentToRemove(null)}
+                className="p-1 hover:bg-slate-800 rounded-full text-slate-400 transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div className="p-6 text-center space-y-4">
+              <div className="relative inline-block">
+                <img 
+                  src={studentToRemove.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80"} 
+                  alt="" 
+                  referrerPolicy="no-referrer"
+                  className="w-16 h-16 rounded-full mx-auto object-cover border-2 border-red-500/20" 
+                />
+                <span className="absolute bottom-0 right-0 px-2 py-0.5 text-[9px] font-bold font-mono text-slate-205 bg-slate-950 border border-slate-850 rounded-full">
+                  Lvl {studentToRemove.level}
+                </span>
+              </div>
+              
+              <div className="space-y-1">
+                <h4 className="text-slate-100 font-bold text-base">{studentToRemove.name}</h4>
+                <p className="text-[11px] text-slate-400 font-mono">{studentToRemove.xp} XP acumulados</p>
+              </div>
+
+              <p className="text-xs text-slate-350 leading-relaxed max-w-sm mx-auto">
+                Tem certeza que deseja remover este aluno da turma <strong className="text-slate-205">"{selectedTurma?.name}"</strong>? O aluno perderá o acesso de visualização a essa regência de turma.
+              </p>
+            </div>
+
+            <div className="p-4 border-t border-slate-800 flex items-center justify-end gap-3 bg-slate-950/50">
+              <button
+                type="button"
+                onClick={() => setStudentToRemove(null)}
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-850 hover:bg-slate-800 text-slate-300 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleRemoveStudentConfirm}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-red-500 hover:bg-red-400 text-slate-950 transition"
+              >
+                Confirmar Remoção
+              </button>
             </div>
           </div>
         </div>

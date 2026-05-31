@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Course, CourseModule, Lesson, StudentProgress, LeaderboardUser, NotificationItem, Turma } from './types';
-import { localDB, auth, signInWithGmail, logoutGmail, db } from './firebase';
+import { localDB, auth, signInWithGmail, logoutGmail, db, signUpUserWithEmailAndPassword, signInUserWithEmailAndPassword } from './firebase';
 import { collection, addDoc, getDoc, doc } from 'firebase/firestore';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { CourseCard } from './components/CourseCard';
@@ -17,6 +17,7 @@ import { AdminPanel } from './components/AdminPanel';
 import { Classroom } from './components/Classroom';
 import { Store } from './components/Store';
 import { StudentDashboard } from './components/StudentDashboard';
+import { CertificateModal } from './components/CertificateModal';
 import { 
   Trophy, BookOpen, Sun, Moon, Sparkles, MessageSquare, Play, CheckCircle2, 
   HelpCircle, CreditCard, ChevronRight, Download, Calendar, ShieldCheck, 
@@ -114,6 +115,62 @@ export default function App() {
   // 1. Theme state (default dark, toggle to light)
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
+  // Email/Password login and registration states
+  const [showRegisterForm, setShowRegisterForm] = useState(false);
+  const [emailForm, setEmailForm] = useState('');
+  const [passwordForm, setPasswordForm] = useState('');
+  const [fullNameForm, setFullNameForm] = useState('');
+  const [registerAvatar, setRegisterAvatar] = useState('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80');
+  const [registerAvatarFile, setRegisterAvatarFile] = useState<File | null>(null);
+  const [authFormLoading, setAuthFormLoading] = useState(false);
+  const [authFormError, setAuthFormError] = useState<string | null>(null);
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthFormLoading(true);
+    setAuthFormError(null);
+
+    // Basic Validation
+    if (!emailForm || !passwordForm) {
+      setAuthFormError("Por favor, preencha todos os campos obrigatórios.");
+      setAuthFormLoading(false);
+      return;
+    }
+
+    if (showRegisterForm && !fullNameForm) {
+      setAuthFormError("Por favor, informe seu nome completo para o cadastro.");
+      setAuthFormLoading(false);
+      return;
+    }
+
+    if (passwordForm.length < 6) {
+      setAuthFormError("A senha precisa ter pelo menos 6 caracteres.");
+      setAuthFormLoading(false);
+      return;
+    }
+
+    try {
+      if (showRegisterForm) {
+        await signUpUserWithEmailAndPassword(fullNameForm, emailForm, passwordForm, registerAvatarFile || registerAvatar);
+      } else {
+        await signInUserWithEmailAndPassword(emailForm, passwordForm);
+      }
+    } catch (err: any) {
+      console.error("Auth submit error:", err);
+      let errMsg = err.message || String(err);
+      if (err.code === 'auth/email-already-in-use') {
+        errMsg = "Este e-mail já está sendo utilizado por outra conta.";
+      } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+        errMsg = "E-mail ou senha incorretos. Por favor, verifique.";
+      } else if (err.code === 'auth/invalid-email') {
+        errMsg = "Por favor, insira um endereço de e-mail válido.";
+      }
+      setAuthFormError(errMsg);
+    } finally {
+      setAuthFormLoading(false);
+    }
+  };
+
   // Real Firebase Gmail login states
   const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -150,11 +207,13 @@ export default function App() {
   const currentUserRole: 'student' | 'instructor' = dbUser?.role || (isSystemAdmin ? 'instructor' : 'student');
   const currentUserId = authUser?.uid || 'current-user-id';
   const currentUserName = authUser?.displayName || authUser?.email?.split('@')[0] || 'Mário Medeiros';
+  const currentUserAvatar = dbUser?.avatar || authUser?.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80';
 
   // 3. Navigation State
   const [activeTab, setActiveTab] = useState<'explore' | 'forum' | 'leaderboard' | 'instructor' | 'admin' | 'classroom' | 'store' | 'dashboard'>('explore');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [formatFilter, setFormatFilter] = useState<'all' | 'online' | 'recorded' | 'presencial'>('all');
+  const [viewingCertificate, setViewingCertificate] = useState(false);
 
   // 4. Data states loading from localStorage localDB
   const [courses, setCourses] = useState<Course[]>(() => localDB.getCourses());
@@ -792,18 +851,20 @@ export default function App() {
   if (!authUser) {
     return (
       <div className={`min-h-screen flex items-center justify-center p-4 transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
-        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center shadow-2xl relative overflow-hidden">
+        <div className={`${showRegisterForm ? 'max-w-lg' : 'max-w-md'} w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center shadow-2xl relative overflow-hidden transition-all duration-300`}>
           {/* Accent Glow */}
           <div className="absolute -top-24 -left-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
           <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
 
           {/* Banner decoration */}
-          <div className="mx-auto w-24 h-24 mb-6">
-            <SavanaLogo className="w-full h-full animate-fade-in" />
-          </div>
+          {!showRegisterForm && (
+            <div className="mx-auto w-24 h-24 mb-6">
+              <SavanaLogo className="w-full h-full animate-fade-in" />
+            </div>
+          )}
 
           <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400 font-bold bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
-            Silvestres & Selvagens
+            {showRegisterForm ? 'Estudante Savana Experience' : 'Educação • Conexão • Conservação'}
           </span>
 
           <div className="flex flex-col items-center justify-center gap-1.5 mt-5 mb-2">
@@ -814,30 +875,216 @@ export default function App() {
           </div>
 
           <p className="text-xs text-slate-400 mt-3 leading-relaxed max-w-xs mx-auto">
-            Por favor, faça acesso com seu Gmail cadastrado para carregar sua árvore de conquistas do diagnóstico funcional e biomas integrados.
+            {showRegisterForm 
+              ? 'Insira seus dados para criar sua conta de estudante no Savana Experience.'
+              : 'Faça acesso com seu Gmail ou utilize seu e-mail e senha cadastrados abaixo.'
+            }
           </p>
 
-          <div className="mt-8 space-y-3">
-            <button
-              id="gmail-login-button"
-              onClick={async () => {
-                try {
-                  await signInWithGmail();
-                } catch (err: any) {
-                  alert("Houve um problema na autenticação do Gmail: " + (err?.message || err));
-                }
-              }}
-              className="w-full flex items-center justify-center gap-3 bg-slate-100 hover:bg-white text-slate-950 font-bold py-3.5 px-4 rounded-xl transition duration-300 hover:shadow-lg hover:shadow-slate-100/10"
-            >
-              {/* Custom SVG Google Icon */}
-              <svg className="w-5 h-5" viewBox="0 0 24 24">
-                <path
-                  fill="#EA4335"
-                  d="M12.24 10.285V14.4h6.887c-.275 1.565-1.88 4.604-6.887 4.604-4.33 0-7.859-3.578-7.859-8s3.53-8 7.859-8c2.46 0 4.102 1.025 5.047 1.926l3.258-3.133C18.332 1.154 15.547 0 12.24 0 5.582 0 0 5.37 0 12s5.582 12 12.24 12c6.96 0 11.57-4.839 11.57-11.786 0-.795-.083-1.4-.185-1.929H12.24z"
-                />
-              </svg>
-              <span>Entrar com sua conta Gmail</span>
-            </button>
+          <div className="mt-8 space-y-4">
+            {/* GOOGLE ACTION BUTTON */}
+            {!showRegisterForm && (
+              <>
+                <button
+                  type="button"
+                  id="gmail-login-button"
+                  onClick={async () => {
+                    try {
+                      await signInWithGmail();
+                    } catch (err: any) {
+                      alert("Houve um problema na autenticação do Gmail: " + (err?.message || err));
+                    }
+                  }}
+                  className="w-full flex items-center justify-center gap-3 bg-slate-100 hover:bg-white text-slate-950 font-bold py-3.5 px-4 rounded-xl transition duration-300 hover:shadow-lg hover:shadow-slate-100/10 cursor-pointer"
+                >
+                  <svg className="w-5 h-5" viewBox="0 0 24 24">
+                    <path
+                      fill="#EA4335"
+                      d="M12.24 10.285V14.4h6.887c-.275 1.565-1.88 4.604-6.887 4.604-4.33 0-7.859-3.578-7.859-8s3.53-8 7.859-8c2.46 0 4.102 1.025 5.047 1.926l3.258-3.133C18.332 1.154 15.547 0 12.24 0 5.582 0 0 5.37 0 12s5.582 12 12.24 12c6.96 0 11.57-4.839 11.57-11.786 0-.795-.083-1.4-.185-1.929H12.24z"
+                    />
+                  </svg>
+                  <span>Entrar com sua conta Gmail</span>
+                </button>
+
+                <div className="flex items-center my-4">
+                  <div className="flex-1 border-t border-slate-800" />
+                  <span className="px-3 text-[10px] text-slate-500 font-mono tracking-wider uppercase">OU ACESSE COM E-MAIL</span>
+                  <div className="flex-1 border-t border-slate-800" />
+                </div>
+              </>
+            )}
+
+            {showRegisterForm && (
+              <div className="flex items-center my-2">
+                <div className="flex-1 border-t border-slate-800" />
+                <span className="px-3 text-[10px] text-slate-500 font-mono tracking-wider uppercase">REGISTRO DE CONTA</span>
+                <div className="flex-1 border-t border-slate-800" />
+              </div>
+            )}
+
+            {/* ERROR DISPLAY */}
+            {authFormError && (
+              <div className="bg-red-950/40 border border-red-500/30 text-red-405 text-xs text-left p-3.5 rounded-xl flex items-start gap-2 animate-fade-in text-red-400">
+                <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <span>{authFormError}</span>
+              </div>
+            )}
+
+            {/* FORM */}
+            <form onSubmit={handleEmailAuth} className="space-y-4 text-left">
+              {showRegisterForm && (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Nome Completo</label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-505 text-slate-500">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </span>
+                    <input
+                      type="text"
+                      required
+                      value={fullNameForm}
+                      onChange={(e) => setFullNameForm(e.target.value)}
+                      placeholder="Ex: Mário Medeiros"
+                      className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">E-mail</label>
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-505 text-slate-500">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                  </span>
+                  <input
+                    type="email"
+                    required
+                    value={emailForm}
+                    onChange={(e) => setEmailForm(e.target.value)}
+                    placeholder="Ex: seuemail@provedor.com"
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Senha</label>
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-505 text-slate-500">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                  </span>
+                  <input
+                    type="password"
+                    required
+                    value={passwordForm}
+                    onChange={(e) => setPasswordForm(e.target.value)}
+                    placeholder="Mínimo de 6 caracteres"
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
+                  />
+                </div>
+              </div>
+
+              {/* PROFILE IMAGE UPLOAD PANEL (Cadastro Mode Only) */}
+              {showRegisterForm && (
+                <div className="bg-slate-950/60 border border-slate-805 border-slate-800 rounded-2xl p-4 mt-2 space-y-3">
+                  <label className="text-[10px] font-bold text-slate-450 text-slate-450 uppercase tracking-widest block">Foto de Perfil</label>
+                  
+                  <div className="flex items-center gap-4">
+                    {/* Circle Preview */}
+                    <div className="relative w-16 h-16 rounded-full overflow-hidden border-2 border-emerald-500/40 bg-slate-900 flex-shrink-0 flex items-center justify-center">
+                      <img 
+                        src={registerAvatar} 
+                        alt="Avatar Preview" 
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    </div>
+
+                    <div className="flex-1 space-y-1 text-left">
+                      <p className="text-[10px] text-slate-450 text-slate-400 leading-tight">Envie sua foto em formato JPG ou PNG</p>
+                      
+                      <label className="inline-flex items-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 hover:border-emerald-500/40 text-[10px] font-bold px-3 py-1.5 rounded-lg cursor-pointer transition">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                        </svg>
+                        <span>Selecionar Foto</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              setRegisterAvatarFile(file);
+                              const reader = new FileReader();
+                              reader.onload = () => {
+                                setRegisterAvatar(reader.result as string);
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ACTION BUTTON */}
+              <button
+                type="submit"
+                disabled={authFormLoading}
+                className="w-full bg-emerald-500 hover:bg-emerald-450 disabled:bg-slate-800 disabled:text-slate-500 text-slate-950 font-bold py-3.5 px-4 rounded-xl transition duration-300 transform hover:scale-[1.01] active:scale-100 flex items-center justify-center gap-2 cursor-pointer mt-2 shadow-lg shadow-emerald-500/10"
+              >
+                {authFormLoading ? (
+                  <>
+                    <svg className="animate-spin -ml-1 h-4 w-4 text-slate-950" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <span>Autenticando...</span>
+                  </>
+                ) : (
+                  <span>{showRegisterForm ? 'Finalizar Cadastro' : 'Entrar com E-mail'}</span>
+                )}
+              </button>
+            </form>
+
+            {/* TOGGLE OPTIONS */}
+            <div className="pt-4 border-t border-slate-800 flex justify-center">
+              {showRegisterForm ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowRegisterForm(false);
+                    setAuthFormError(null);
+                  }}
+                  className="text-xs text-slate-400 hover:text-white transition duration-200 flex items-center gap-1 cursor-pointer"
+                >
+                  Já possui login? <span className="text-emerald-400 font-bold hover:underline">Entre aqui</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowRegisterForm(true);
+                    setAuthFormError(null);
+                  }}
+                  className="text-xs text-slate-400 hover:text-white transition duration-200 flex items-center gap-1 cursor-pointer"
+                >
+                  Novo no Savana Experience? <span className="text-emerald-400 font-bold hover:underline">Cadastre-se</span>
+                </button>
+              )}
+            </div>
             
             <p className="text-[10px] text-slate-500 font-mono uppercase tracking-wider">
               Autenticação Segura via Firebase Auth
@@ -1096,7 +1343,7 @@ export default function App() {
             {authUser && (
               <div className="flex items-center gap-2 border-l border-slate-800 pl-3">
                 <img 
-                  src={authUser.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'} 
+                  src={currentUserAvatar} 
                   alt="Profile" 
                   className="w-7 h-7 rounded-full border border-slate-800"
                   referrerPolicy="no-referrer"
@@ -1254,7 +1501,7 @@ export default function App() {
               <div className="px-4 pt-4 border-t border-slate-800 mt-auto">
                 <div className="flex items-center gap-3">
                   <img 
-                    src={authUser.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'} 
+                    src={currentUserAvatar} 
                     alt="Profile" 
                     className="w-10 h-10 rounded-full border border-slate-800"
                     referrerPolicy="no-referrer"
@@ -1309,11 +1556,11 @@ export default function App() {
               
               <div className="relative max-w-xl">
                 <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400 font-bold block mb-2">
-                   Silvestres & Selvagens
+                   Educação • Conexão • Conservação
                 </span>
                 
                 <h1 className="font-display text-2xl sm:text-4xl font-black text-slate-100 leading-tight">
-                  Especialização em Pets Exóticos & Selvagens.
+                  Cursos em Medicina Veterinária, Biologia e Meio Ambiente.
                 </h1>
 
                 <p className="text-xs sm:text-sm text-slate-300 mt-4 leading-relaxed">
@@ -1533,21 +1780,44 @@ export default function App() {
                         <div className="space-y-3">
                           <h4 className="font-display font-medium text-xs uppercase tracking-wider text-slate-400 font-mono">Liberar agora</h4>
                           <p className="text-xs text-slate-400 leading-relaxed">
-                            Realize a compra segura via Pix ou Cartão para liberar imediatamente todas as matérias gravadas e as agendas de transmissões online.
+                            {selectedCourse.saleType === 'whatsapp' 
+                              ? 'Solicite sua vaga falando direto com nossos atendentes via WhatsApp e libere imediatamente suas matérias.'
+                              : 'Realize a compra segura via Pix ou Cartão para liberar imediatamente todas as matérias gravadas e as agendas de transmissões online.'}
                           </p>
                         </div>
 
                         <div className="pt-6 space-y-3">
-                          <button
-                            onClick={() => {
-                              setCheckoutCourse(selectedCourse);
-                              setCheckoutStep('form');
-                            }}
-                            className="w-full h-12 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs uppercase tracking-widest rounded-xl hover:shadow-lg hover:shadow-emerald-500/10 transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
-                          >
-                            Matricular-se Agora ({selectedCourse.price === 0 ? 'Gratuito' : selectedCourse.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})
-                          </button>
-                          <p className="text-[10px] text-center text-slate-500 font-mono">⚡ Compra aprovada instantaneamente via gateway criptografado</p>
+                          {selectedCourse.saleType === 'whatsapp' ? (
+                            <a
+                              href={`https://wa.me/${
+                                selectedCourse.whatsappNumber 
+                                  ? (selectedCourse.whatsappNumber.replace(/\D/g, '').length === 10 || selectedCourse.whatsappNumber.replace(/\D/g, '').length === 11)
+                                    ? '55' + selectedCourse.whatsappNumber.replace(/\D/g, '')
+                                    : selectedCourse.whatsappNumber.replace(/\D/g, '')
+                                  : '5521971477755'
+                              }?text=${encodeURIComponent(`Olá! Quero me matricular no curso "${selectedCourse.title}". Como procedo com a inscrição?`)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="w-full h-12 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs uppercase tracking-widest rounded-xl hover:shadow-lg hover:shadow-emerald-500/10 transition flex items-center justify-center gap-2 cursor-pointer shadow-md text-center"
+                            >
+                              Falar no WhatsApp ({selectedCourse.price === 0 ? 'Gratuito' : selectedCourse.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})
+                            </a>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setCheckoutCourse(selectedCourse);
+                                setCheckoutStep('form');
+                              }}
+                              className="w-full h-12 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs uppercase tracking-widest rounded-xl hover:shadow-lg hover:shadow-emerald-500/10 transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                            >
+                              Matricular-se Agora ({selectedCourse.price === 0 ? 'Gratuito' : selectedCourse.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})
+                            </button>
+                          )}
+                          <p className="text-[10px] text-center text-slate-500 font-mono">
+                            {selectedCourse.saleType === 'whatsapp' 
+                              ? '⚡ Atendimento imediato de segunda a sábado em horário comercial'
+                              : '⚡ Compra aprovada instantaneamente via gateway criptografado'}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -1816,6 +2086,55 @@ export default function App() {
                     Sincronizar Calendário (.ICS)
                   </button>
                 </div>
+
+                {/* Certificate Banner (if course concluded 100%) */}
+                {(() => {
+                  const courseModules = modules.filter(m => m.courseId === selectedCourse.id);
+                  const lessons = courseModules.flatMap(m => m.isLive ? [] : (m.lessons || []));
+                  const prog = userProgress.find(p => p.courseId === selectedCourse.id);
+                  const completedLessonsCount = lessons.filter(l => prog?.completedLessons.includes(l.id)).length;
+                  const totalLessonsCount = lessons.length;
+                  const isFinished = totalLessonsCount > 0 && completedLessonsCount === totalLessonsCount;
+
+                  if (isFinished) {
+                    return (
+                      <div className="bg-gradient-to-br from-emerald-950 via-slate-900 to-slate-900 border border-emerald-500/30 rounded-2xl p-5 shadow-xl space-y-3 relative overflow-hidden text-left mb-4">
+                        <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-xl animate-pulse" />
+                        <div className="flex items-center gap-2 text-emerald-400 relative z-10">
+                          <Award size={18} className="animate-bounce" />
+                          <span className="text-[10px] tracking-widest font-mono uppercase font-black">Curso Concluído!</span>
+                        </div>
+                        <p className="text-[11px] text-slate-300 leading-normal relative z-10">
+                          Parabéns! Você completou toda a grade curricular de "{selectedCourse.title}". Seu Certificado de Especialista está pronto para emissão.
+                        </p>
+                        <button
+                          onClick={() => setViewingCertificate(true)}
+                          className="w-full py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-450 hover:to-teal-450 text-slate-950 text-xs font-bold uppercase tracking-wider rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer hover:scale-[1.01] relative z-10 font-mono font-black shadow-md shadow-emerald-500/10"
+                        >
+                          <Award size={13} />
+                          Emitir Certificado
+                        </button>
+                      </div>
+                    );
+                  }
+                  
+                  // If not finished, we can show a summary progress bar at the top of the sidebar
+                  const percent = totalLessonsCount > 0 ? Math.round((completedLessonsCount / totalLessonsCount) * 100) : 0;
+                  return (
+                    <div className="bg-slate-950/40 border border-slate-850 rounded-2xl p-4 shadow-sm space-y-2 mb-4 text-left">
+                      <div className="flex justify-between items-center text-[9px] font-mono">
+                        <span className="text-slate-450 uppercase tracking-widest font-bold">SEU PROGRESSO</span>
+                        <span className="text-emerald-400 font-bold">{percent}% ({completedLessonsCount}/{totalLessonsCount})</span>
+                      </div>
+                      <div className="h-1.5 w-full bg-slate-900 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-emerald-500 rounded-full transition-all duration-500" 
+                          style={{ width: `${percent}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Modules & Syllabus Index */}
                 <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
@@ -2115,6 +2434,19 @@ export default function App() {
           currentUserId={currentUserId}
           currentUserName={currentUserName}
           currentUserRole={currentUserRole}
+        />
+      )}
+
+      {viewingCertificate && selectedCourse && (
+        <CertificateModal
+          isOpen={viewingCertificate}
+          onClose={() => setViewingCertificate(false)}
+          studentName={currentUserName}
+          courseTitle={selectedCourse.title}
+          instructorName={selectedCourse.instructorName || "Coordenador Docente"}
+          courseId={selectedCourse.id}
+          duration={selectedCourse.totalDuration || "40 horas"}
+          xpReward={selectedCourse.xpReward || 500}
         />
       )}
 

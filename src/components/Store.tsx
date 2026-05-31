@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Reward, Redemption } from '../types';
 import { localDB } from '../firebase';
-import { Gift, Award, CheckCircle2 } from 'lucide-react';
+import { Gift, Award, CheckCircle2, AlertCircle, X } from 'lucide-react';
 
 interface StoreProps {
   currentUserId: string;
@@ -13,16 +13,20 @@ interface StoreProps {
 export function Store({ currentUserId, rewards, userXp, onRedeem }: StoreProps) {
   const [redeemingId, setRedeemingId] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [rewardToRedeem, setRewardToRedeem] = useState<Reward | null>(null);
 
-  const handleRedeem = async (reward: Reward) => {
+  const handleRedeemClick = (reward: Reward) => {
     if (userXp < reward.xpCost) {
       alert("Você não tem saldo de XP suficiente para resgatar este prêmio.");
       return;
     }
-    
-    // confirm
-    if (!confirm(`Confirmar o resgate de "${reward.title}" por ${reward.xpCost} XP?`)) return;
+    setRewardToRedeem(reward);
+  };
 
+  const handleRedeemConfirm = async () => {
+    if (!rewardToRedeem) return;
+    const reward = rewardToRedeem;
+    setRewardToRedeem(null);
     setRedeemingId(reward.id);
     
     try {
@@ -104,7 +108,7 @@ export function Store({ currentUserId, rewards, userXp, onRedeem }: StoreProps) 
                 
                 <button
                   disabled={!hasEnoughXp || redeemingId === reward.id}
-                  onClick={() => handleRedeem(reward)}
+                  onClick={() => handleRedeemClick(reward)}
                   className={`w-full py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition flex items-center justify-center gap-2 ${
                     !hasEnoughXp
                       ? 'bg-slate-950 border border-slate-850 text-slate-600 cursor-not-allowed'
@@ -118,6 +122,66 @@ export function Store({ currentUserId, rewards, userXp, onRedeem }: StoreProps) 
           })}
         </div>
       )}
+
+      {/* Modal de Confirmação de Resgate na Loja */}
+      {rewardToRedeem && (
+        <div id="reward-redemption-confirmation-modal" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in animate-duration-200">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl flex flex-col">
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
+              <div className="flex items-center gap-2 text-emerald-400">
+                <Gift size={20} className="text-emerald-400" />
+                <h3 className="font-display font-bold text-slate-100 text-base">Confirmar Resgate</h3>
+              </div>
+              <button 
+                onClick={() => setRewardToRedeem(null)}
+                className="p-1 hover:bg-slate-800 rounded-full text-slate-400 transition cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div className="p-6 text-center space-y-4">
+              <div className="w-16 h-16 rounded-2xl overflow-hidden mx-auto border-2 border-emerald-500/20 bg-slate-950">
+                <img 
+                  src={rewardToRedeem.imageUrl} 
+                  alt={rewardToRedeem.title} 
+                  className="w-full h-full object-cover" 
+                />
+              </div>
+              
+              <div className="space-y-1">
+                <h4 className="text-slate-100 font-bold text-base">{rewardToRedeem.title}</h4>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-full text-xs font-mono font-bold">
+                  <Award size={14} />
+                  -{rewardToRedeem.xpCost} XP
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-350 leading-relaxed max-w-xs mx-auto">
+                Confirmar o resgate de <strong className="text-slate-200">"{rewardToRedeem.title}"</strong>? Esta pontuação de XP será deduzida da sua carteira.
+              </p>
+            </div>
+
+            <div className="p-4 border-t border-slate-800 flex items-center justify-end gap-3 bg-slate-950/50">
+              <button
+                type="button"
+                onClick={() => setRewardToRedeem(null)}
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-850 hover:bg-slate-800 text-slate-300 transition cursor-pointer"
+              >
+                Voltar
+              </button>
+              <button
+                type="button"
+                onClick={handleRedeemConfirm}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-emerald-500 hover:bg-emerald-455 text-slate-950 transition cursor-pointer flex items-center gap-1.5 shadow-lg shadow-emerald-500/10"
+              >
+                Confirmar Resgate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

@@ -244,5 +244,11 @@ service cloud.firestore {
       allow update: if isInstructor();
       allow delete: if isInstructor();
     }
+
+    // 16. SYSTEM SETTINGS (Certificates, defaults, etc.)
+    match /settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isInstructor();
+    }
   }
 }
