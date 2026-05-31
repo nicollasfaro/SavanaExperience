@@ -204,6 +204,40 @@ export interface CertificateSettings {
   chiefInstructorName: string;
   textDescription: string;
   detailedMetadata: string;
+  
+  // Custom layout fields
+  useCustomLayout?: boolean;
+  backgroundImageUrl?: string; // Base64 PNG image or template URL
+  
+  // Positioning in % (0 - 100)
+  customInstitutionTop?: number;
+  customTitleTop?: number;
+  customRecipientTop?: number;
+  customTextTop?: number;
+  customCourseTop?: number;
+  customMetaTop?: number;
+  customSignaturesTop?: number;
+  customQrTop?: number;
+  customQrLeft?: number;
+  customQrSize?: number;
+
+  // Font sizes (in px or matching scaling)
+  customTitleSize?: number;
+  customInstitutionSize?: number;
+  customRecipientSize?: number;
+  customTextSize?: number;
+  customCourseSize?: number;
+  customMetaSize?: number;
+  customSignaturesSize?: number;
+
+  // Custom text colors
+  customTitleColor?: string;
+  customInstitutionColor?: string;
+  customRecipientColor?: string;
+  customTextColor?: string;
+  customCourseColor?: string;
+  customMetaColor?: string;
+  customSignaturesColor?: string;
 }
 
 export interface IssuedCertificate {
