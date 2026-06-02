@@ -1484,18 +1484,11 @@ export default function App() {
 
 
 
-            {/* Theme Toggle icon */}
-            <button
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              className="p-2 bg-slate-900 border border-slate-800 rounded-xl hover:bg-slate-850 text-slate-350 hover:text-slate-200 transition"
-              title="Alternar Tema de Leitura"
-            >
-              {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
-            </button>
+
 
             {/* User Profile / Logout Banner */}
             {authUser && (
-              <div className="flex items-center gap-2 border-l border-slate-800 pl-3">
+              <div className="hidden md:flex items-center gap-2 border-l border-slate-800 pl-3">
                 <img 
                   src={currentUserAvatar} 
                   alt="Profile" 
