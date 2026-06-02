@@ -184,8 +184,8 @@ service cloud.firestore {
     // 9. AUTOMATED NOTIFICATIONS
     match /notifications/{notificationId} {
       allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isInstructor());
-      allow create: if isInstructor(); // System created only, or automated function trigger
-      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['read']);
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
       allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 

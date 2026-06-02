@@ -1,9 +1,13 @@
-import React, { useState } from 'react';
-import { Course, LeaderboardUser, NotificationItem } from '../types';
-import { BookOpen, Activity, Star, Calendar, Edit2, X, Camera, Loader2, Check, Award } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Course, LeaderboardUser, NotificationItem, ForumThread } from '../types';
+import { 
+  BookOpen, Activity, Star, Calendar, Edit2, X, Camera, Loader2, Check, Award,
+  Heart, MessageSquare, Send, Users, UserPlus, UserMinus, Flame, RefreshCw, Trash2 
+} from 'lucide-react';
 import { CourseCard } from './CourseCard';
 import { updateUserProfile, localDB } from '../firebase';
 import { CertificateModal } from './CertificateModal';
+import { UserProfileModal } from './UserProfileModal';
 
 interface StudentDashboardProps {
   courses: Course[];
@@ -33,6 +37,102 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
 
   // Certificate Modal State
   const [selectedCertCourse, setSelectedCertCourse] = useState<Course | null>(null);
+
+  // SAVANA SOCIAL NETWORKING STATES
+  const [socialFeed, setSocialFeed] = useState<ForumThread[]>([]);
+  const [allLeaderboardUsers, setAllLeaderboardUsers] = useState<LeaderboardUser[]>([]);
+  
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  
+  const [newPostText, setNewPostText] = useState('');
+  const [activeFeedTab, setActiveFeedTab] = useState<'all' | 'following'>('all');
+  const [commentingPostId, setCommentingPostId] = useState<string | null>(null);
+  const [commentTextState, setCommentTextState] = useState<Record<string, string>>({});
+  const [confirmDeletePostId, setConfirmDeletePostId] = useState<string | null>(null);
+
+  // Real-time synchronization
+  useEffect(() => {
+    const syncSocial = () => {
+      setSocialFeed(localDB.getForumThreads());
+      setAllLeaderboardUsers(localDB.getLeaderboard());
+    };
+
+    syncSocial();
+
+    const unsubThreads = localDB.onChange('threads', syncSocial);
+    const unsubLeaderboard = localDB.onChange('leaderboard', syncSocial);
+
+    return () => {
+      unsubThreads();
+      unsubLeaderboard();
+    };
+  }, []);
+
+  // Post social status update
+  const handleCreateSocialPost = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPostText.trim()) return;
+
+    const newPost: ForumThread = {
+      id: `social-${Date.now()}`,
+      courseId: 'general',
+      title: '', // Category 'social' posts don't need academic titles
+      content: newPostText.trim(),
+      authorId: user.userId,
+      authorName: user.name,
+      authorRole: user.role,
+      createdAt: new Date().toISOString(),
+      category: 'social',
+      likes: 0,
+      replies: []
+    };
+
+    await localDB.saveForumThread(newPost);
+    setNewPostText('');
+  };
+
+  // Like a social post
+  const handleLikePost = async (post: ForumThread) => {
+    const isLiked = post.likes > 0;
+    const updatedPost: ForumThread = {
+      ...post,
+      likes: isLiked ? post.likes - 1 : post.likes + 1
+    };
+    await localDB.saveForumThread(updatedPost);
+  };
+
+  // Add a reply comment to a social post
+  const handleAddComment = async (postId: string) => {
+    const text = commentTextState[postId] || '';
+    if (!text.trim()) return;
+
+    const post = socialFeed.find(p => p.id === postId);
+    if (post) {
+      const newReply = {
+        id: `reply-${Date.now()}`,
+        threadId: postId,
+        content: text.trim(),
+        authorId: user.userId,
+        authorName: user.name,
+        authorRole: user.role,
+        createdAt: new Date().toISOString()
+      };
+
+      const updatedPost: ForumThread = {
+        ...post,
+        replies: [...(post.replies || []), newReply]
+      };
+
+      await localDB.saveForumThread(updatedPost);
+      setCommentTextState(prev => ({ ...prev, [postId]: '' }));
+    }
+  };
+
+  const handleDeletePost = async (postId: string) => {
+    await localDB.deleteForumThread(postId);
+    setConfirmDeletePostId(null);
+  };
 
   const handleOpenModal = () => {
     setEditName(user.name);
@@ -231,34 +331,245 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
           )}
         </div>
 
-        {/* Right Column: Recent Activity */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 mb-6">
-            <Activity className="text-emerald-500" size={20} />
-            <h3 className="font-display text-xl font-bold text-slate-100">Atividade Recente</h3>
+        {/* Right Column: Feed Social Savana */}
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Users className="text-emerald-400" size={20} />
+              <h3 className="font-display text-xl font-bold text-slate-100">Feed Social Savana</h3>
+            </div>
+            
+            <span className="text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20">
+              Conexões
+            </span>
           </div>
-          
-          <div className="bg-slate-950 border border-slate-850 rounded-2xl p-4 space-y-4">
-            {recentActivity.length === 0 ? (
-              <p className="text-slate-500 text-sm text-center py-4">Nenhuma atividade recente.</p>
+
+          {/* Composer: Quick Status Update */}
+          <form onSubmit={handleCreateSocialPost} className="bg-slate-950 border border-slate-850 p-4 rounded-3xl space-y-3">
+            <div className="flex gap-3">
+              <img 
+                src={user.avatar} 
+                alt={user.name} 
+                className="w-8 h-8 rounded-full object-cover border border-slate-800 shrink-0"
+              />
+              <textarea
+                value={newPostText}
+                onChange={(e) => setNewPostText(e.target.value)}
+                placeholder="Compartilhe suas conquistas de estudo, casos clínicos ou pergunte aos colegas..."
+                rows={2}
+                maxLength={280}
+                className="flex-1 bg-transparent text-xs text-slate-200 placeholder-slate-600 outline-none resize-none border-0 focus:ring-0 p-1"
+              />
+            </div>
+            
+            <div className="flex justify-between items-center border-t border-slate-900/60 pt-2.5">
+              <span className="text-[9px] text-slate-500 font-mono">
+                {280 - newPostText.length} caracteres restando
+              </span>
+              <button
+                type="submit"
+                disabled={!newPostText.trim()}
+                className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-30 disabled:pointer-events-none text-slate-950 rounded-lg text-[10px] font-bold font-mono tracking-wider uppercase transition-all flex items-center gap-1.5 cursor-pointer shadow"
+              >
+                <Send size={11} />
+                Publicar
+              </button>
+            </div>
+          </form>
+
+          {/* Social Filters */}
+          <div className="flex rounded-xl bg-slate-950 p-1 border border-slate-850">
+            <button
+              onClick={() => setActiveFeedTab('all')}
+              className={`flex-1 py-1.5 text-center text-[10px] uppercase tracking-wider font-mono font-black rounded-lg transition-all ${
+                activeFeedTab === 'all'
+                  ? 'bg-slate-900 text-emerald-400 font-bold border border-slate-800'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Todos ({socialFeed.filter(p => p.category === 'social').length})
+            </button>
+            <button
+              onClick={() => setActiveFeedTab('following')}
+              className={`flex-1 py-1.5 text-center text-[10px] uppercase tracking-wider font-mono font-black rounded-lg transition-all ${
+                activeFeedTab === 'following'
+                  ? 'bg-slate-900 text-emerald-400 font-bold border border-slate-800'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Seguindo
+            </button>
+          </div>
+
+          {/* Posts Feed Timeline */}
+          <div className="space-y-4 max-h-[550px] overflow-y-auto pr-1">
+            {socialFeed.filter(post => {
+              if (post.category !== 'social') return false;
+              if (activeFeedTab === 'all') return true;
+              
+              // Filter following
+              const myProfile = allLeaderboardUsers.find(u => u.userId === user.userId);
+              const following = myProfile?.following || [];
+              return following.includes(post.authorId);
+            }).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).length === 0 ? (
+              <div className="border border-dashed border-slate-850 rounded-2xl py-8 text-center bg-slate-950/20">
+                <p className="text-slate-500 text-xs font-mono">Nenhum status publicado.</p>
+                {activeFeedTab === 'following' && (
+                  <p className="text-[10px] text-slate-600 mt-1 px-3">Siga outros alunos no Ranking para ver as atualizações deles aqui!</p>
+                )}
+              </div>
             ) : (
-              recentActivity.map(notif => (
-                <div key={notif.id} className="flex gap-3 items-start border-b border-slate-850/50 last:border-0 pb-3 last:pb-0">
-                  <div className="mt-1 p-1.5 bg-slate-900 border border-slate-800 rounded-lg shrink-0">
-                    {notif.type === 'progress' && <Star size={14} className="text-emerald-400" />}
-                    {notif.type === 'course' && <BookOpen size={14} className="text-blue-400" />}
-                    {notif.type === 'forum' && <Activity size={14} className="text-purple-400" />}
-                    {(notif.type === 'badge' || notif.type === 'announcement') && <Calendar size={14} className="text-amber-400" />}
+              socialFeed.filter(post => {
+                if (post.category !== 'social') return false;
+                if (activeFeedTab === 'all') return true;
+                
+                // Filter following
+                const myProfile = allLeaderboardUsers.find(u => u.userId === user.userId);
+                const following = myProfile?.following || [];
+                return following.includes(post.authorId);
+              }).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map(post => {
+                const authorUser = allLeaderboardUsers.find(u => u.userId === post.authorId);
+                const isPostByMe = post.authorId === user.userId;
+                
+                return (
+                  <div key={post.id} className="bg-slate-950 border border-slate-850/80 p-4 rounded-2xl space-y-3 shadow-md hover:border-slate-800/80 transition-all duration-300">
+                    
+                    {/* Post Author Info */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div 
+                        className="flex gap-2.5 items-center cursor-pointer group"
+                        onClick={() => {
+                          setSelectedProfileId(post.authorId);
+                          setIsProfileOpen(true);
+                        }}
+                        title="Ver Perfil do Aluno"
+                      >
+                        <img 
+                          src={authorUser?.avatar || post.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150"} 
+                          alt={post.authorName} 
+                          className="w-8 h-8 rounded-xl object-cover border border-slate-800 group-hover:ring-2 group-hover:ring-emerald-500/40 transition-all"
+                        />
+                        <div className="min-w-0">
+                          <h4 className="text-xs font-bold text-slate-200 group-hover:text-emerald-400 transition-colors flex items-center gap-1">
+                            <span className="truncate">{post.authorName}</span>
+                            {isPostByMe && <span className="text-[8px] bg-slate-900 border border-slate-800 text-slate-400 px-1 py-0.2 rounded font-mono font-black uppercase">Eu</span>}
+                          </h4>
+                          <span className="text-[9px] text-slate-500 font-mono block">
+                            Lvl {authorUser?.level || 1} • {new Date(post.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      </div>
+
+                      {isPostByMe && (
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {confirmDeletePostId === post.id ? (
+                            <div className="flex items-center gap-1 animate-fadeIn">
+                              <button
+                                onClick={() => handleDeletePost(post.id)}
+                                className="px-1.5 py-0.5 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-slate-950 border border-red-500/20 font-mono text-[9px] font-bold rounded uppercase cursor-pointer transition-all"
+                              >
+                                Confirmar
+                              </button>
+                              <button
+                                onClick={() => setConfirmDeletePostId(null)}
+                                className="px-1.5 py-0.5 bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-slate-800 font-mono text-[9px] font-bold rounded uppercase cursor-pointer transition-all"
+                              >
+                                X
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setConfirmDeletePostId(post.id)}
+                              className="text-slate-600 hover:text-red-400 hover:bg-red-500/5 p-1 rounded-lg transition-all cursor-pointer"
+                              title="Excluir publicação"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Post Content */}
+                    <p className="text-xs text-slate-300 leading-relaxed font-sans whitespace-pre-wrap">{post.content}</p>
+
+                    {/* Like / Comment Controls */}
+                    <div className="flex items-center gap-4 pt-1 border-t border-slate-900/60 text-[10px] font-mono text-slate-500">
+                      <button 
+                        onClick={() => handleLikePost(post)}
+                        className={`flex items-center gap-1.5 transition-colors cursor-pointer ${post.likes > 0 ? 'text-red-400' : 'hover:text-slate-200'}`}
+                        title="Curtir publicação"
+                      >
+                        <Heart size={13} className={post.likes > 0 ? "fill-red-400 text-red-400" : ""} />
+                        <span>{post.likes}</span>
+                      </button>
+
+                      <button 
+                        onClick={() => setCommentingPostId(commentingPostId === post.id ? null : post.id)}
+                        className="flex items-center gap-1.5 hover:text-slate-200 transition-colors cursor-pointer"
+                        title="Comentários"
+                      >
+                        <MessageSquare size={13} />
+                        <span>{post.replies?.length || 0}</span>
+                      </button>
+                    </div>
+
+                    {/* Expanded commenting section */}
+                    {commentingPostId === post.id && (
+                      <div className="mt-2 space-y-3 bg-slate-900/40 border border-slate-900/60 p-3 rounded-xl text-left">
+                        
+                        {/* List of comments */}
+                        {post.replies && post.replies.length > 0 && (
+                          <div className="space-y-2.5 max-h-[180px] overflow-y-auto pr-1">
+                            {post.replies.map((reply: any) => (
+                              <div key={reply.id} className="text-[11px] border-b border-slate-950 last:border-0 pb-1.5 last:pb-0">
+                                <div className="flex justify-between items-center text-[10px] mb-0.5">
+                                  <span 
+                                    className="font-bold text-slate-300 cursor-pointer hover:text-emerald-400 transition"
+                                    onClick={() => {
+                                      setSelectedProfileId(reply.authorId);
+                                      setIsProfileOpen(true);
+                                    }}
+                                  >
+                                    {reply.authorName}
+                                  </span>
+                                  <span className="text-[9px] text-slate-500 font-mono">
+                                    {new Date(reply.createdAt).toLocaleDateString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                </div>
+                                <p className="text-slate-400">{reply.content}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Add comment input form */}
+                        <div className="flex gap-2 items-center">
+                          <input 
+                            type="text"
+                            placeholder="Escreva um comentário..."
+                            value={commentTextState[post.id] || ''}
+                            onChange={(e) => setCommentTextState(prev => ({ ...prev, [post.id]: e.target.value }))}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleAddComment(post.id);
+                            }}
+                            className="flex-1 bg-slate-950 border border-slate-850 px-2.5 py-1.5 text-[11px] text-slate-200 rounded-lg outline-none placeholder-slate-600 focus:border-slate-800"
+                          />
+                          <button
+                            onClick={() => handleAddComment(post.id)}
+                            disabled={!(commentTextState[post.id] || '').trim()}
+                            className="p-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-lg disabled:opacity-40 transition cursor-pointer"
+                          >
+                            <Send size={11} />
+                          </button>
+                        </div>
+
+                      </div>
+                    )}
+
                   </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-200">{notif.title}</h4>
-                    <p className="text-[11px] text-slate-450 mt-0.5">{notif.message}</p>
-                    <span className="text-[9px] text-slate-500 mt-1 block">
-                      {new Date(notif.createdAt).toLocaleDateString('pt-BR')}
-                    </span>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
@@ -397,6 +708,18 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
           courseId={selectedCertCourse.id}
           duration={selectedCertCourse.totalDuration || "40 horas"}
           xpReward={selectedCertCourse.xpReward || 500}
+        />
+      )}
+
+      {isProfileOpen && selectedProfileId && (
+        <UserProfileModal
+          userId={selectedProfileId}
+          isOpen={isProfileOpen}
+          onClose={() => {
+            setIsProfileOpen(false);
+            setSelectedProfileId(null);
+          }}
+          currentUserId={user.userId}
         />
       )}
     </div>

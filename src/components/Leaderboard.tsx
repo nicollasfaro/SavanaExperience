@@ -3,10 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { LeaderboardUser, Badge } from '../types';
 import { ALL_BADGES } from '../data';
-import { Trophy, Award, Zap, BookOpen, MessageSquareText, GraduationCap } from 'lucide-react';
+import { 
+  Trophy, Award, Zap, BookOpen, MessageSquareText, GraduationCap, 
+  ChevronLeft, ChevronRight, UserPlus, UserMinus, UserCheck, Eye 
+} from 'lucide-react';
+import { localDB } from '../firebase';
+import { UserProfileModal } from './UserProfileModal';
 
 interface LeaderboardProps {
   currentUserId: string;
@@ -14,11 +19,33 @@ interface LeaderboardProps {
 }
 
 export function Leaderboard({ currentUserId, users }: LeaderboardProps) {
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 8;
+
+  // Track dynamic real-time users state
+  const [leaderboardUsers, setLeaderboardUsers] = useState<LeaderboardUser[]>([]);
+  const [selectedProfileUserId, setSelectedProfileUserId] = useState<string | null>(null);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+
+  useEffect(() => {
+    setLeaderboardUsers(localDB.getLeaderboard());
+    const unsub = localDB.onChange('leaderboard', () => {
+      setLeaderboardUsers(localDB.getLeaderboard());
+    });
+    return () => unsub();
+  }, []);
+
   // Filter out instructors/professors, only students should appear on the ranking page
-  const studentsOnly = users.filter((u) => u.role === 'student');
+  const studentsOnly = leaderboardUsers.length > 0 
+    ? leaderboardUsers.filter((u) => u.role === 'student') 
+    : users.filter((u) => u.role === 'student');
 
   // Sort student users by XP descending
   const sortedUsers = [...studentsOnly].sort((a, b) => b.xp - a.xp);
+
+  const totalPages = Math.ceil(sortedUsers.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedUsers = sortedUsers.slice(startIndex, startIndex + itemsPerPage);
 
   // Helper to map string icon inside Lucide
   const renderBadgeIcon = (iconName: string, size = 18) => {
@@ -48,9 +75,11 @@ export function Leaderboard({ currentUserId, users }: LeaderboardProps) {
         </div>
 
         <div className="space-y-3">
-          {sortedUsers.map((user, index) => {
+          {paginatedUsers.map((user, index) => {
             const isMe = user.userId === currentUserId;
-            const rank = index + 1;
+            const rank = startIndex + index + 1;
+            const currentUserProfile = leaderboardUsers.find(u => u.userId === currentUserId);
+            const isFollowingUser = currentUserProfile?.following?.includes(user.userId) || false;
 
             return (
               <div
@@ -61,9 +90,17 @@ export function Leaderboard({ currentUserId, users }: LeaderboardProps) {
                     : 'bg-slate-950/45 border border-slate-900 hover:border-slate-800'
                 }`}
               >
-                <div className="flex items-center gap-4">
+                {/* Clicking Name/Avatar opens profile modal */}
+                <div 
+                  className="flex items-center gap-4 cursor-pointer group flex-1"
+                  onClick={() => {
+                    setSelectedProfileUserId(user.userId);
+                    setIsProfileOpen(true);
+                  }}
+                  title="Visualizar Perfil Completo"
+                >
                   {/* Position Badge */}
-                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold leading-none ${
+                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold leading-none shrink-0 ${
                     rank === 1 ? 'bg-amber-400 text-slate-950' :
                     rank === 2 ? 'bg-slate-300 text-slate-950' :
                     rank === 3 ? 'bg-amber-700 text-slate-100' : 'bg-slate-800 text-slate-400'
@@ -76,29 +113,99 @@ export function Leaderboard({ currentUserId, users }: LeaderboardProps) {
                     src={user.avatar}
                     alt={user.name}
                     referrerPolicy="no-referrer"
-                    className="w-10 h-10 rounded-full object-cover border border-slate-800 shadow-sm"
+                    className="w-10 h-10 rounded-full object-cover border border-slate-800 shadow-sm shrink-0 group-hover:ring-2 group-hover:ring-emerald-500/40 transition-all duration-300"
                   />
 
-                  <div>
-                    <span className="font-semibold text-sm text-slate-100 flex items-center gap-1.5">
-                      {user.name}
-                      {isMe && <span className="text-[9px] bg-emerald-500 text-slate-950 font-bold px-1.5 py-0.5 rounded uppercase">Eu</span>}
+                  <div className="min-w-0 flex-1">
+                    <span className="font-semibold text-sm text-slate-100 flex items-center gap-1.5 group-hover:text-emerald-400 transition-colors">
+                      <span className="truncate">{user.name}</span>
+                      {isMe && <span className="text-[9px] bg-emerald-500 text-slate-950 font-bold px-1.5 py-0.5 rounded uppercase shrink-0">Eu</span>}
                     </span>
-                    <span className="text-[10px] text-slate-500 font-mono">
-                      Nível {user.level} • {user.badges.length} insignias desbloqueadas
+                    <span className="text-[10px] text-slate-500 font-mono block truncate">
+                      Nível {user.level} • {user.badges.length} insignias • Clique p/ ver perfil
                     </span>
                   </div>
                 </div>
 
-                {/* Score */}
-                <div className="text-right">
-                  <span className="text-sm font-bold text-emerald-400 font-mono">{user.xp} XP</span>
-                  <span className="block text-[8px] text-slate-500 uppercase tracking-widest mt-0.5">Pontuação</span>
+                {/* Follow Button & Score wrapper */}
+                <div className="flex items-center gap-3 sm:gap-4 shrink-0">
+                  {!isMe && (
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation(); // Stop row click propagation!
+                        await localDB.toggleFollowUser(currentUserId, user.userId);
+                      }}
+                      className={`p-1.5 px-2.5 rounded-lg border text-xs font-semibold flex items-center gap-1 transition-all ${
+                        isFollowingUser
+                          ? 'bg-slate-900 border-slate-800/80 text-emerald-400 hover:text-red-400 hover:border-red-950'
+                          : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-slate-950'
+                      }`}
+                      title={isFollowingUser ? "Deixar de seguir" : "Seguir Aluno"}
+                    >
+                      {isFollowingUser ? <UserMinus size={13} /> : <UserPlus size={13} />}
+                      <span className="hidden sm:inline">{isFollowingUser ? "Seguindo" : "Seguir"}</span>
+                    </button>
+                  )}
+                  
+                  {/* Score */}
+                  <div className="text-right min-w-[50px]">
+                    <span className="text-sm font-bold text-emerald-400 font-mono">{user.xp} XP</span>
+                    <span className="block text-[8px] text-slate-500 uppercase tracking-widest mt-0.5">Pontuação</span>
+                  </div>
                 </div>
               </div>
             );
           })}
         </div>
+
+        {/* Pagination controls */}
+        {totalPages > 1 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between border-t border-slate-800/60 pt-4 mt-5 gap-3">
+            <span className="text-xs text-slate-400">
+              Mostrando <strong className="text-slate-200">{startIndex + 1}</strong> a{' '}
+              <strong className="text-slate-200">
+                {Math.min(startIndex + itemsPerPage, sortedUsers.length)}
+              </strong>{' '}
+              de <strong className="text-slate-200">{sortedUsers.length}</strong> alunos
+            </span>
+            
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                className="p-1 px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-100 disabled:opacity-30 disabled:pointer-events-none transition text-xs flex items-center gap-1"
+              >
+                <ChevronLeft size={14} />
+                Anterior
+              </button>
+              
+              <div className="flex items-center gap-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((pg) => (
+                  <button
+                    key={pg}
+                    onClick={() => setCurrentPage(pg)}
+                    className={`w-7 h-7 rounded-lg text-xs font-mono font-bold transition flex items-center justify-center ${
+                      currentPage === pg
+                        ? 'bg-emerald-500 text-slate-950'
+                        : 'bg-slate-950 border border-slate-850 text-slate-400 hover:text-slate-100 hover:border-slate-700'
+                    }`}
+                  >
+                    {pg}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                disabled={currentPage === totalPages}
+                className="p-1 px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-100 disabled:opacity-30 disabled:pointer-events-none transition text-xs flex items-center gap-1"
+              >
+                Próximo
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 2. Badge Dictionary / Medalhas Column (1 block) */}
@@ -158,6 +265,18 @@ export function Leaderboard({ currentUserId, users }: LeaderboardProps) {
           })}
         </div>
       </div>
+
+      {isProfileOpen && selectedProfileUserId && (
+        <UserProfileModal
+          userId={selectedProfileUserId}
+          isOpen={isProfileOpen}
+          onClose={() => {
+            setIsProfileOpen(false);
+            setSelectedProfileUserId(null);
+          }}
+          currentUserId={currentUserId}
+        />
+      )}
 
     </div>
   );

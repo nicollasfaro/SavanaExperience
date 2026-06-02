@@ -9,6 +9,7 @@ import { localDB, auth, signInWithGmail, logoutGmail, db, signUpUserWithEmailAnd
 import { collection, addDoc, getDoc, doc } from 'firebase/firestore';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { CourseCard } from './components/CourseCard';
+import { PushNotificationToggle } from './components/PushNotificationToggle';
 import { Forum } from './components/Forum';
 import { Leaderboard } from './components/Leaderboard';
 import { InstructorPanel } from './components/InstructorPanel';
@@ -565,15 +566,36 @@ export default function App() {
     }
   }, []);
 
-  // Listen for progress & enrollment changes when currentUserId changes
+  // Listen for progress, enrollment, & notifications changes when currentUserId changes
   useEffect(() => {
     if (!currentUserId) return;
     setUserProgress(localDB.getProgress(currentUserId));
     setLocalRegistrations(localDB.getRegistrations());
+    
+    // Set initial notifications for the switched user
+    const initialNotifs = localDB.getNotifications(currentUserId);
+    setNotifications(prev => {
+      const currentDyn = prev.filter(n => n.id.startsWith('dyn-'));
+      return [...currentDyn, ...initialNotifs].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    });
+
     const unsubProgress = localDB.onChange(`progress_${currentUserId}`, () => {
       setUserProgress(localDB.getProgress(currentUserId));
     });
-    return () => unsubProgress();
+
+    const unsubNotifs = localDB.onChange(`notifications_${currentUserId}`, () => {
+      const liveNotifs = localDB.getNotifications(currentUserId);
+      setNotifications(prev => {
+        const currentDyn = prev.filter(n => n.id.startsWith('dyn-'));
+        const dynFiltered = currentDyn.filter(d => !liveNotifs.some(p => p.id === d.id));
+        return [...dynFiltered, ...liveNotifs].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      });
+    });
+
+    return () => {
+      unsubProgress();
+      unsubNotifs();
+    };
   }, [currentUserId]);
 
   // Biometrics scanner verification triggers
@@ -1388,27 +1410,73 @@ export default function App() {
             {/* Notification system widget */}
             <div className="relative">
               <button
-                onClick={() => setShowNotificationDropdown(!showNotificationDropdown)}
-                className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl relative text-slate-350"
+                onClick={() => {
+                  const nextState = !showNotificationDropdown;
+                  setShowNotificationDropdown(nextState);
+                  if (nextState && currentUserId) {
+                    localDB.markAllNotificationsRead(currentUserId);
+                  }
+                }}
+                className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl relative text-slate-350 transition flex items-center justify-center cursor-pointer"
+                title="Notificações"
               >
                 <Bell size={15} />
-                {notifications.some(n => !n.read) && (
-                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                {notifications.filter(n => !n.read).length > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold font-mono text-white ring-2 ring-slate-900 animate-pulse">
+                    {notifications.filter(n => !n.read).length}
+                  </span>
                 )}
               </button>
 
               {/* Dropdown Container */}
               {showNotificationDropdown && (
-                <div className="absolute right-0 mt-2.5 w-72 bg-slate-900 border border-slate-800 shadow-2xl rounded-2xl p-4 z-40">
-                  <span className="text-[10px] uppercase font-mono font-bold tracking-wider text-slate-500 block mb-2.5">Notificações Automáticas</span>
+                <div className="absolute right-0 mt-2.5 w-80 bg-slate-900 border border-slate-800 shadow-2xl rounded-2xl p-4 z-40">
+                  <div className="flex items-center justify-between mb-3 border-b border-slate-800 pb-2">
+                    <span className="text-[10px] uppercase font-mono font-bold tracking-wider text-slate-400">Notificações</span>
+                    <button 
+                      onClick={() => {
+                        if (currentUserId) {
+                          localDB.markAllNotificationsRead(currentUserId);
+                        }
+                      }}
+                      className="text-[9px] font-mono text-emerald-400 hover:text-emerald-300 font-bold uppercase cursor-pointer"
+                    >
+                      Limpar Avisos
+                    </button>
+                  </div>
+
+                  {currentUserId && (
+                    <PushNotificationToggle currentUserId={currentUserId} />
+                  )}
                   
-                  <div className="space-y-2 max-h-56 overflow-y-auto">
-                    {notifications.map(notif => (
-                      <div key={notif.id} className="p-2.5 bg-slate-950 rounded-xl border border-slate-850/60">
-                        <span className="text-[10px] font-bold text-emerald-400 block">{notif.title}</span>
-                        <p className="text-[10px] text-slate-400 leading-normal mt-0.5">{notif.message}</p>
-                      </div>
-                    ))}
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {notifications.length === 0 ? (
+                      <p className="text-[10px] text-slate-500 font-mono text-center py-4">Nenhuma notificação por enquanto.</p>
+                    ) : (
+                      notifications.map(notif => (
+                        <div 
+                          key={notif.id} 
+                          className={`p-2.5 rounded-xl border transition-all ${
+                            notif.read 
+                              ? 'bg-slate-950/40 border-slate-850/40 opacity-70' 
+                              : 'bg-emerald-500/5 border-emerald-500/20 shadow-sm shadow-emerald-500/2 font-medium'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-1">
+                            <span className={`text-[10px] font-bold block ${notif.read ? 'text-slate-300' : 'text-emerald-400'}`}>
+                              {notif.title}
+                            </span>
+                            {!notif.read && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                            )}
+                          </div>
+                          <p className="text-[10px] text-slate-400 leading-normal mt-1">{notif.message}</p>
+                          <span className="text-[8px] text-slate-500 font-mono block mt-1.5">
+                            {new Date(notif.createdAt).toLocaleDateString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               )}

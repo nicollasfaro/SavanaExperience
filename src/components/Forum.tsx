@@ -47,6 +47,10 @@ export function Forum({ currentUserId, currentUserName, currentUserRole, courseI
   const categories = ['Todos', 'Geral', 'Casos Clínicos', 'Manejo e Nutrição', 'Cirurgia e Anestesia', 'Farmacologia', 'Exames e Diagnóstico'];
 
   const filteredThreads = threads.filter(t => {
+    // Exclude social network posts from academic forums
+    if (t.category === 'social') {
+      return false;
+    }
     // If courseIdFilter is active, filter only for that course, or general
     if (courseIdFilter && t.courseId !== 'general' && t.courseId !== courseIdFilter) {
       return false;

@@ -12,6 +12,7 @@ import {
   BookOpen, Calendar, Compass, Lock
 } from 'lucide-react';
 import { localDB, db, cleanUndefined } from '../firebase';
+import { sendLiveClassPushAlert } from '../lib/pushService';
 import { doc, setDoc, onSnapshot, getDoc } from 'firebase/firestore';
 import { Course, CourseModule, Turma } from '../types';
 
@@ -1494,6 +1495,19 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
                                           setSelectedModuleForRoom(updated);
                                           setActiveRoomId(roomId);
                                           triggerToast(`Sua nova sala de transmissão ao vivo foi iniciada!`);
+                                           try {
+                                             const parentCourse = courses.find(c => c.id === mod.courseId);
+                                             const courseTitle = parentCourse?.title || 'Savana Experience';
+                                             sendLiveClassPushAlert({
+                                               courseId: mod.courseId,
+                                               courseTitle: courseTitle,
+                                               moduleTitle: mod.title,
+                                               roomId: roomId,
+                                               studentIds: []
+                                             });
+                                           } catch (pushErr) {
+                                             console.warn("Falha ao disparar Web Push:", pushErr);
+                                           }
                                         }}
                                         className="w-full text-center py-2 bg-indigo-650 hover:bg-indigo-600 border border-indigo-700 text-white rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 hover:scale-[1.02] cursor-pointer"
                                       >

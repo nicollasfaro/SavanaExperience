@@ -113,6 +113,8 @@ export interface LeaderboardUser {
   level: number;
   badges: string[]; // Badge IDs
   role: 'student' | 'instructor';
+  following?: string[]; // list of userIds this user follows
+  followers?: string[]; // list of userIds following this user
 }
 
 export interface ForumThread {

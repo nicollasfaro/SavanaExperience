@@ -11,7 +11,7 @@ import {
 } from 'firebase/firestore';
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, signInAnonymously, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { Course, CourseModule, StudentProgress, ForumThread, ChatMessage, LeaderboardUser, Turma, Reward, Redemption, CertificateSettings, IssuedCertificate, PreRegistration } from './types';
+import { Course, CourseModule, StudentProgress, ForumThread, ChatMessage, LeaderboardUser, Turma, Reward, Redemption, CertificateSettings, IssuedCertificate, PreRegistration, NotificationItem } from './types';
 import { INITIAL_COURSES, INITIAL_MODULES, INITIAL_LEADERBOARD, INITIAL_DISCUSSION_THREADS, INITIAL_CHAT_MESSAGES, INITIAL_TURMAS, INITIAL_CERTIFICATE_SETTINGS } from './data';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -455,6 +455,28 @@ class StorageEngine {
     );
     this.activeUnsubscribes.push(unsubProgress);
 
+    // Notifications Sync
+    const unsubNotifications = onSnapshot(
+      query(collection(db, 'notifications'), where('userId', '==', user.uid)),
+      (snap) => {
+        const notifList: NotificationItem[] = [];
+        snap.forEach((d) => {
+          notifList.push(d.data() as NotificationItem);
+        });
+        const key = `notifications_${user.uid}`;
+        this.set(key, notifList.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+        this.notify(key);
+      },
+      (err) => {
+        if (this.isFirebaseAuthenticated) {
+          handleFirestoreError(err, OperationType.LIST, 'notifications');
+        } else {
+          console.warn("Notifications Sync error: ", err.message);
+        }
+      }
+    );
+    this.activeUnsubscribes.push(unsubNotifications);
+
     // Rewards Sync
     const unsubRewards = onSnapshot(
       collection(db, 'rewards'),
@@ -865,6 +887,105 @@ class StorageEngine {
     return false;
   }
 
+  async toggleFollowUser(currentUserId: string, targetUserId: string) {
+    const board = this.getLeaderboard();
+    const currentUser = board.find(u => u.userId === currentUserId);
+    if (currentUser) {
+      if (!currentUser.following) {
+        currentUser.following = [];
+      }
+      const isFollowing = currentUser.following.includes(targetUserId);
+      if (isFollowing) {
+        currentUser.following = currentUser.following.filter(id => id !== targetUserId);
+      } else {
+        currentUser.following.push(targetUserId);
+      }
+      
+      this.set('leaderboard', board);
+      this.notify('leaderboard');
+
+      // Create notification to the target user if starting to follow
+      if (!isFollowing) {
+        const followNotif: NotificationItem = {
+          id: `follow-${currentUserId}-${targetUserId}-${Date.now()}`,
+          userId: targetUserId,
+          title: 'Novo Seguidor!',
+          message: `${currentUser.name} começou a seguir o seu perfil no Savana Experience.`,
+          type: 'progress',
+          read: false,
+          createdAt: new Date().toISOString()
+        };
+        await this.saveNotification(followNotif);
+      }
+
+      if (!this.isFirebaseAuthenticated) return;
+
+      try {
+        await setDoc(doc(db, 'leaderboard', currentUserId), cleanUndefined(currentUser));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `leaderboard/${currentUserId}`);
+      }
+    }
+  }
+
+  // --- NOTIFICATIONS API ---
+  getNotifications(userId: string): NotificationItem[] {
+    const key = `notifications_${userId}`;
+    const baseWelcome: NotificationItem = {
+      id: 'n-1',
+      userId: userId,
+      title: 'Boas-vindas ao Savana Experience!',
+      message: 'Comece a estudar hoje, acumule pontos de experiência (XP) e conquiste sua primeira medalha.',
+      type: 'progress',
+      read: false,
+      createdAt: new Date().toISOString()
+    };
+    return this.get(key, [baseWelcome]);
+  }
+
+  async saveNotification(notif: NotificationItem) {
+    const key = `notifications_${notif.userId}`;
+    const list = this.getNotifications(notif.userId);
+    const idx = list.findIndex(n => n.id === notif.id);
+    if (idx >= 0) {
+      list[idx] = notif;
+    } else {
+      list.unshift(notif); // Newest first
+    }
+    
+    this.set(key, list);
+    this.notify(key);
+
+    if (!this.isFirebaseAuthenticated) return;
+
+    try {
+      await setDoc(doc(db, 'notifications', notif.id), cleanUndefined(notif));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `notifications/${notif.id}`);
+    }
+  }
+
+  async markAllNotificationsRead(userId: string) {
+    const key = `notifications_${userId}`;
+    const list = this.getNotifications(userId);
+    const unreadList = list.filter(n => !n.read);
+    const updated = list.map(n => ({ ...n, read: true }));
+    
+    this.set(key, updated);
+    this.notify(key);
+
+    if (!this.isFirebaseAuthenticated) return;
+
+    try {
+      await Promise.all(unreadList.map(n => {
+        const updatedNotif = { ...n, read: true };
+        return setDoc(doc(db, 'notifications', n.id), cleanUndefined(updatedNotif));
+      }));
+    } catch (err) {
+      console.warn("Failed to mark all notifications read in Firestore:", err.message);
+    }
+  }
+
   // Forum Threads
   getForumThreads(): ForumThread[] {
     return this.get('threads', INITIAL_DISCUSSION_THREADS);
@@ -878,12 +999,45 @@ class StorageEngine {
     this.set('threads', list);
     this.notify('threads');
 
+    // Notify followers if this is a new social post
+    if (thread.category === 'social' && idx < 0) {
+      const board = this.getLeaderboard();
+      const followers = board.filter(u => u.following?.includes(thread.authorId));
+      for (const follower of followers) {
+        const notif: NotificationItem = {
+          id: `status-${thread.id}-${follower.userId}-${Date.now()}`,
+          userId: follower.userId,
+          title: 'Novo Status Publicado!',
+          message: `${thread.authorName} publicou um novo status: "${thread.content.length > 50 ? thread.content.substring(0, 47) + '...' : thread.content}"`,
+          type: 'forum',
+          read: false,
+          createdAt: new Date().toISOString()
+        };
+        await this.saveNotification(notif);
+      }
+    }
+
     if (!this.isFirebaseAuthenticated) return;
 
     try {
       await setDoc(doc(db, 'forumThreads', thread.id), cleanUndefined(thread));
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `forumThreads/${thread.id}`);
+    }
+  }
+
+  async deleteForumThread(threadId: string) {
+    const list = this.getForumThreads();
+    const updated = list.filter(t => t.id !== threadId);
+    this.set('threads', updated);
+    this.notify('threads');
+
+    if (!this.isFirebaseAuthenticated) return;
+
+    try {
+      await deleteDoc(doc(db, 'forumThreads', threadId));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `forumThreads/${threadId}`);
     }
   }
 

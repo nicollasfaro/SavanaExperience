@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Course } from '../types';
-import { Star, GraduationCap, Clock, Award, MessageCircle } from 'lucide-react';
+import { Star, GraduationCap, Clock, Award, MessageCircle, Share2, Twitter, Linkedin, Link, Check } from 'lucide-react';
 
 interface CourseCardProps {
   key?: string;
@@ -16,6 +16,18 @@ interface CourseCardProps {
 }
 
 export function CourseCard({ course, isRegistered, onSelect, onEnroll }: CourseCardProps) {
+  const [showShareOptions, setShowShareOptions] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyLink = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const url = window.location.origin + `?course=${course.id}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
   const getWhatsappLink = () => {
     const defaultNumber = '5521971477755';
     let rawPhone = course.whatsappNumber ? course.whatsappNumber.replace(/\D/g, '') : '';
@@ -132,40 +144,181 @@ export function CourseCard({ course, isRegistered, onSelect, onEnroll }: CourseC
           </div>
 
           {isRegistered ? (
-            <button
-              id={`view-lessons-btn-${course.id}`}
-              onClick={onSelect}
-              className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-800 text-slate-100 hover:bg-emerald-500 hover:text-slate-950 hover:shadow-lg hover:shadow-emerald-500/20 transition-all duration-200"
-            >
-              Ver Aulas
-            </button>
+            <div className="flex items-center gap-1.5 relative">
+              <button
+                id={`view-lessons-btn-${course.id}`}
+                onClick={onSelect}
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-800 text-slate-100 hover:bg-emerald-500 hover:text-slate-950 hover:shadow-lg hover:shadow-emerald-500/20 transition-all duration-200 cursor-pointer"
+              >
+                Ver Aulas
+              </button>
+
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowShareOptions(!showShareOptions);
+                  }}
+                  className="p-2 text-slate-400 hover:text-emerald-400 bg-slate-950/40 hover:bg-slate-950/80 rounded-xl border border-slate-800 transition duration-200 cursor-pointer flex items-center justify-center h-8 w-8"
+                  title="Compartilhar Curso"
+                >
+                  <Share2 size={13} />
+                </button>
+
+                {showShareOptions && (
+                  <div className="absolute right-0 bottom-full mb-2.5 w-48 bg-slate-950 border border-slate-850 rounded-xl p-2 shadow-2xl z-30 space-y-1 animate-fadeIn">
+                    <span className="text-[9px] uppercase font-mono font-bold text-slate-500 tracking-wider block px-2 py-1 mb-1 border-b border-slate-900">
+                      Compartilhar
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleCopyLink}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 text-[11px] text-slate-300 hover:text-emerald-400 hover:bg-emerald-500/5 rounded-lg transition-all text-left font-sans cursor-pointer"
+                    >
+                      {copied ? (
+                        <>
+                          <Check size={11} className="text-emerald-400 shrink-0" />
+                          <span className="text-emerald-400 font-medium">Copiado!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Link size={11} className="shrink-0" />
+                          <span>Copiar Link</span>
+                        </>
+                      )}
+                    </button>
+                    <a
+                      href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`Confira este curso no Savana Experience: "${course.title}" - ${window.location.origin}?course=${course.id}`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setShowShareOptions(false)}
+                      className="flex items-center gap-2 px-2 py-1.5 text-[11px] text-slate-300 hover:text-emerald-400 hover:bg-emerald-500/5 rounded-lg transition-all text-left font-sans"
+                    >
+                      <MessageCircle size={11} className="fill-slate-350 text-slate-300 shrink-0" />
+                      <span>WhatsApp</span>
+                    </a>
+                    <a
+                      href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(`${window.location.origin}?course=${course.id}`)}&text=${encodeURIComponent(`Estou aprendendo sobre "${course.title}" no Savana Experience!`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setShowShareOptions(false)}
+                      className="flex items-center gap-2 px-2 py-1.5 text-[11px] text-slate-300 hover:text-emerald-400 hover:bg-emerald-500/5 rounded-lg transition-all text-left font-sans"
+                    >
+                      <Twitter size={11} className="shrink-0" />
+                      <span>X (Twitter)</span>
+                    </a>
+                    <a
+                      href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(`${window.location.origin}?course=${course.id}`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setShowShareOptions(false)}
+                      className="flex items-center gap-2 px-2 py-1.5 text-[11px] text-slate-300 hover:text-emerald-400 hover:bg-emerald-500/5 rounded-lg transition-all text-left font-sans"
+                    >
+                      <Linkedin size={11} className="shrink-0" />
+                      <span>LinkedIn</span>
+                    </a>
+                  </div>
+                )}
+              </div>
+            </div>
           ) : (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 relative">
               <button
                 id={`learn-more-btn-${course.id}`}
                 onClick={onSelect}
-                className="px-3 py-2 text-xs font-semibold rounded-xl bg-slate-800 text-slate-300 hover:text-slate-300 hover:bg-slate-700 transition-all duration-200"
+                className="px-3 py-2 text-xs font-semibold rounded-xl bg-slate-800 text-slate-300 hover:text-slate-200 hover:bg-slate-700 transition-all duration-200 cursor-pointer"
               >
                 Saiba mais
               </button>
+
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowShareOptions(!showShareOptions);
+                  }}
+                  className="p-2 text-slate-400 hover:text-emerald-400 bg-slate-950/40 hover:bg-slate-950/80 rounded-xl border border-slate-800 transition duration-200 cursor-pointer flex items-center justify-center h-8 w-8"
+                  title="Compartilhar Curso"
+                >
+                  <Share2 size={13} />
+                </button>
+
+                {showShareOptions && (
+                  <div className="absolute right-0 bottom-full mb-2.5 w-48 bg-slate-950 border border-slate-850 rounded-xl p-2 shadow-2xl z-30 space-y-1 animate-fadeIn">
+                    <span className="text-[9px] uppercase font-mono font-bold text-slate-500 tracking-wider block px-2 py-1 mb-1 border-b border-slate-900">
+                      Compartilhar
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleCopyLink}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 text-[11px] text-slate-300 hover:text-emerald-400 hover:bg-emerald-500/5 rounded-lg transition-all text-left font-sans cursor-pointer"
+                    >
+                      {copied ? (
+                        <>
+                          <Check size={11} className="text-emerald-400 shrink-0" />
+                          <span className="text-emerald-400 font-medium">Copiado!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Link size={11} className="shrink-0" />
+                          <span>Copiar Link</span>
+                        </>
+                      )}
+                    </button>
+                    <a
+                      href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`Confira este curso no Savana Experience: "${course.title}" - ${window.location.origin}?course=${course.id}`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setShowShareOptions(false)}
+                      className="flex items-center gap-2 px-2 py-1.5 text-[11px] text-slate-300 hover:text-emerald-400 hover:bg-emerald-500/5 rounded-lg transition-all text-left font-sans"
+                    >
+                      <MessageCircle size={11} className="fill-slate-350 text-slate-300 shrink-0" />
+                      <span>WhatsApp</span>
+                    </a>
+                    <a
+                      href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(`${window.location.origin}?course=${course.id}`)}&text=${encodeURIComponent(`Estou aprendendo sobre "${course.title}" no Savana Experience!`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setShowShareOptions(false)}
+                      className="flex items-center gap-2 px-2 py-1.5 text-[11px] text-slate-300 hover:text-emerald-400 hover:bg-emerald-500/5 rounded-lg transition-all text-left font-sans"
+                    >
+                      <Twitter size={11} className="shrink-0" />
+                      <span>X (Twitter)</span>
+                    </a>
+                    <a
+                      href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(`${window.location.origin}?course=${course.id}`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setShowShareOptions(false)}
+                      className="flex items-center gap-2 px-2 py-1.5 text-[11px] text-slate-300 hover:text-emerald-400 hover:bg-emerald-500/5 rounded-lg transition-all text-left font-sans"
+                    >
+                      <Linkedin size={11} className="shrink-0" />
+                      <span>LinkedIn</span>
+                    </a>
+                  </div>
+                )}
+              </div>
+
               {course.saleType === 'whatsapp' ? (
                 <a
                   id={`enroll-btn-${course.id}`}
                   href={getWhatsappLink()}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-4 py-2 text-xs font-bold rounded-xl bg-emerald-500 text-slate-950 hover:bg-emerald-400 hover:shadow-lg hover:shadow-emerald-500/25 transition-all duration-200 flex items-center justify-center gap-1"
+                  className="px-3 py-2 text-xs font-bold rounded-xl bg-emerald-500 text-slate-950 hover:bg-emerald-400 hover:shadow-lg hover:shadow-emerald-500/25 transition-all duration-200 flex items-center justify-center gap-1"
                 >
-                  <MessageCircle size={13} className="fill-slate-950 text-slate-950 shrink-0" />
-                  WhatsApp
+                  <MessageCircle size={11} className="fill-slate-950 text-slate-950 shrink-0" />
+                  Inscrição
                 </a>
               ) : (
                 <button
                   id={`enroll-btn-${course.id}`}
                   onClick={onEnroll}
-                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-emerald-500 text-slate-950 font-bold hover:bg-emerald-400 hover:shadow-lg hover:shadow-emerald-500/25 transition-all duration-200"
+                  className="px-3 py-2 text-xs font-semibold rounded-xl bg-emerald-500 text-slate-950 font-bold hover:bg-emerald-400 hover:shadow-lg hover:shadow-emerald-500/25 transition-all duration-200"
                 >
-                  Matricular-se
+                  Matricular
                 </button>
               )}
             </div>
