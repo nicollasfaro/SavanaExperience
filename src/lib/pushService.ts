@@ -35,13 +35,13 @@ export async function registerServiceWorker() {
 
 export async function subscribeToPushNotifications(userId: string): Promise<boolean> {
   try {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
       console.warn('Push notifications are not fully supported on this browser or origin constraints.');
       return false;
     }
 
     // 1. Request desktop permission
-    const permission = await Notification.requestPermission();
+    const permission = await window.Notification.requestPermission();
     if (permission !== 'granted') {
       console.warn('Notification permission was not granted:', permission);
       return false;
@@ -101,10 +101,10 @@ export async function subscribeToPushNotifications(userId: string): Promise<bool
 }
 
 export async function isPushSubscribed(): Promise<boolean> {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
     return false;
   }
-  if (Notification.permission !== 'granted') {
+  if (window.Notification.permission !== 'granted') {
     return false;
   }
   const registration = await navigator.serviceWorker.getRegistration();

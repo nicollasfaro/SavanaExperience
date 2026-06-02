@@ -13,12 +13,14 @@ export function PushNotificationToggle({ currentUserId }: PushNotificationToggle
   const [permissionState, setPermissionState] = useState<string>('');
 
   useEffect(() => {
-    const isPushSupported = 'serviceWorker' in navigator && 'PushManager' in window;
+    const isPushSupported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
     setSupported(isPushSupported);
-    setPermissionState(Notification.permission);
-
-    if (isPushSupported && currentUserId) {
-      isPushSubscribed().then(setSubscribed);
+    
+    if (isPushSupported) {
+      setPermissionState(window.Notification.permission);
+      if (currentUserId) {
+        isPushSubscribed().then(setSubscribed);
+      }
     }
   }, [currentUserId]);
 
@@ -29,7 +31,9 @@ export function PushNotificationToggle({ currentUserId }: PushNotificationToggle
     try {
       const success = await subscribeToPushNotifications(currentUserId);
       setSubscribed(success);
-      setPermissionState(Notification.permission);
+      if ('Notification' in window) {
+        setPermissionState(window.Notification.permission);
+      }
     } catch (err) {
       console.error(err);
     } finally {
