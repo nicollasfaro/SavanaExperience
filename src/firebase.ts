@@ -370,8 +370,13 @@ class StorageEngine {
         msgList.push(d.data() as ChatMessage);
       });
       const sorted = msgList.sort((a,b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-      const chats = this.get('chat_messages', INITIAL_CHAT_MESSAGES);
-      chats['general-support'] = sorted;
+      
+      const chats: { [key: string]: ChatMessage[] } = {};
+      sorted.forEach((msg) => {
+        const cId = msg.chatId || 'general-support';
+        if (!chats[cId]) chats[cId] = [];
+        chats[cId].push(msg);
+      });
       this.set('chat_messages', chats);
       this.notify('chat_messages');
     }, (err) => {
@@ -1044,10 +1049,16 @@ class StorageEngine {
   // Chat
   getChatMessages(chatId: string): ChatMessage[] {
     const chats = this.get('chat_messages', INITIAL_CHAT_MESSAGES);
-    return chats[chatId] || [];
+    const msgs = chats[chatId] || [];
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    return msgs.filter((m: ChatMessage) => {
+      if (!m.createdAt) return false;
+      return new Date(m.createdAt).getTime() >= cutoff;
+    });
   }
 
   async saveChatMessage(chatId: string, msg: ChatMessage) {
+    msg.chatId = chatId;
     const chats = this.get('chat_messages', INITIAL_CHAT_MESSAGES);
     if (!chats[chatId]) chats[chatId] = [];
     chats[chatId].push(msg);

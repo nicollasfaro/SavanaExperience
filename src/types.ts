@@ -148,6 +148,7 @@ export interface ChatMessage {
   senderRole: 'student' | 'instructor';
   message: string;
   createdAt: string;
+  chatId?: string;
 }
 
 export interface CourseRegistration {

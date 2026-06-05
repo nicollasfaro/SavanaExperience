@@ -16,55 +16,108 @@ interface SupportChatProps {
 
 export function SupportChat({ currentUserId, currentUserName, currentUserRole }: SupportChatProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>(() => localDB.getChatMessages('general-support'));
+  const chatId = `support-${currentUserId}`;
+  const [messages, setMessages] = useState<ChatMessage[]>(() => localDB.getChatMessages(chatId));
   const [text, setText] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
 
   useEffect(() => {
     return localDB.onChange('chat_messages', () => {
-      setMessages(localDB.getChatMessages('general-support'));
+      setMessages(localDB.getChatMessages(chatId));
     });
-  }, []);
+  }, [chatId]);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto scroll to bottom when new messages come in or when chat is opened
+  // Auto scroll to bottom when new messages come in or when chat is opened or when typing changes
   useEffect(() => {
     if (isOpen) {
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [isOpen, messages]);
+  }, [isOpen, messages, isTyping]);
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!text.trim()) return;
+    const userMessage = text.trim();
+    if (!userMessage) return;
 
     const newMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
       senderId: currentUserId,
       senderName: currentUserName,
       senderRole: currentUserRole,
-      message: text,
+      message: userMessage,
       createdAt: new Date().toISOString()
     };
 
-    localDB.saveChatMessage('general-support', newMsg);
-    setMessages(localDB.getChatMessages('general-support'));
+    localDB.saveChatMessage(chatId, newMsg);
+    const updatedMessages = localDB.getChatMessages(chatId);
+    setMessages(updatedMessages);
     setText('');
 
-    // Simulate tutor automated response after 1.5 seconds to make it interactive if desired
-    if (currentUserRole === 'student') {
-      setTimeout(() => {
+    // Trigger AI support bot for all user messages to allow testing and use by both students and instructors
+    if (newMsg.senderId !== 'tutor-support-system') {
+      setIsTyping(true);
+      try {
+        const courses = localDB.getCourses();
+        const modules = localDB.getModules();
+
+        // Standardize the recent conversational history to pass back to server-side Gemini
+        const chatHistory = updatedMessages
+          .slice(-12)
+          .map(msg => ({
+            role: msg.senderId === currentUserId ? 'user' : 'model',
+            text: msg.message
+          }));
+
+        const response = await fetch('/api/support/reply', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            message: userMessage,
+            history: chatHistory.slice(0, -1), // skip current message from historical array to avoid doubling
+            courses,
+            modules
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error('Support API response error');
+        }
+
+        const data = await response.json();
+
         const tutorReply: ChatMessage = {
-          id: `msg-${Date.now() + 1}`,
+          id: `msg-${Date.now()}`,
           senderId: 'tutor-support-system',
-          senderName: 'Dr. Gabriel (Tutor)',
+          senderName: 'Dr. Gabriel (Tutor IA)',
           senderRole: 'instructor',
-          message: `Obrigado pelo seu contato médico! Analisei sua questão clínica sobre "${text.slice(0, 30)}...". Nossos clínicos plantonistas darão um parecer completo no suporte em instantes. Enquanto isso, verifique os novos casos no Fórum!`,
+          message: data.reply,
           createdAt: new Date().toISOString()
         };
-        localDB.saveChatMessage('general-support', tutorReply);
-        setMessages(localDB.getChatMessages('general-support'));
-      }, 1500);
+
+        localDB.saveChatMessage(chatId, tutorReply);
+        setMessages(localDB.getChatMessages(chatId));
+      } catch (err) {
+        console.error("Support API interactive reply failed:", err);
+        // Clean elegant fallback dialogue if key or server has a transient glitch
+        const tutorReply: ChatMessage = {
+          id: `msg-${Date.now()}`,
+          senderId: 'tutor-support-system',
+          senderName: 'Dr. Gabriel (Tutor IA)',
+          senderRole: 'instructor',
+          message: `Olá! Devido a uma instabilidade temporária na minha rede veterinária de IA, não consegui processar sua consulta agora.
+          
+Mas lembre-se: temos excelentes cursos de especialização disponíveis na Savana Experience para você se aprofundar nos diagnósticos e casos reais! Tente enviar sua pergunta novamente em alguns instantes.`,
+          createdAt: new Date().toISOString()
+        };
+        localDB.saveChatMessage(chatId, tutorReply);
+        setMessages(localDB.getChatMessages(chatId));
+      } finally {
+        setIsTyping(false);
+      }
     }
   };
 
@@ -99,7 +152,7 @@ export function SupportChat({ currentUserId, currentUserName, currentUserRole }:
                 <span className="text-xs font-bold text-slate-100 block">Atendimento Savana Experience</span>
                 <span className="text-[9px] uppercase font-mono tracking-widest text-emerald-400 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-  Tutor Disponível
+                  Tutor IA Disponível
                 </span>
               </div>
             </div>
@@ -126,7 +179,7 @@ export function SupportChat({ currentUserId, currentUserName, currentUserRole }:
                     {msg.senderName} • {new Date(msg.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                   </span>
 
-                  <div className={`p-3 rounded-2xl text-[11px] leading-relaxed shadow-md ${
+                  <div className={`p-3 rounded-2xl text-[11px] leading-relaxed shadow-md whitespace-pre-wrap ${
                     myMsg 
                       ? 'bg-emerald-500 text-slate-950 font-medium rounded-tr-none' 
                       : 'bg-slate-850 text-slate-205 rounded-tl-none border border-slate-800/60'
@@ -136,6 +189,22 @@ export function SupportChat({ currentUserId, currentUserName, currentUserRole }:
                 </div>
               );
             })}
+
+            {isTyping && (
+              <div className="flex flex-col max-w-[85%] mr-auto items-start">
+                <span className="text-[9px] text-emerald-400 mb-0.5 px-1 font-mono animate-pulse">
+                  Dr. Gabriel (Tutor IA) está digitando...
+                </span>
+                <div className="bg-slate-850 text-slate-200 rounded-2xl rounded-tl-none border border-slate-800/60 p-3 shadow-md">
+                  <div className="flex gap-1.5 items-center py-1 px-1.5">
+                    <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                    <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                    <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div ref={chatEndRef} />
           </div>
 
@@ -146,13 +215,15 @@ export function SupportChat({ currentUserId, currentUserName, currentUserRole }:
                 type="text"
                 required
                 value={text}
+                disabled={isTyping}
                 onChange={(e) => setText(e.target.value)}
-                placeholder="Qual sua dúvida médica de silvestres?"
-                className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                placeholder={isTyping ? "Aguardando resposta do tutor..." : "Qual sua dúvida médica de silvestres?"}
+                className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 disabled:opacity-50"
               />
               <button
                 type="submit"
-                className="p-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl font-bold transition flex items-center justify-center shrink-0"
+                disabled={isTyping}
+                className="p-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl font-bold transition flex items-center justify-center shrink-0 disabled:opacity-50"
               >
                 <Send size={14} />
               </button>

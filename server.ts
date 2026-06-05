@@ -3,6 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import Stripe from "stripe";
 import webpush from "web-push";
+import { GoogleGenAI } from "@google/genai";
 
 // Web Push API Subscriptions storage
 interface PushSubscriptionStore {
@@ -48,6 +49,121 @@ async function startServer() {
     }
     return stripeClient;
   }
+
+  // Gemini Client lazy initialization
+  let geminiClient: GoogleGenAI | null = null;
+  function getGeminiClient(): GoogleGenAI | null {
+    if (!geminiClient) {
+      const key = process.env.GEMINI_API_KEY;
+      if (!key) {
+        console.warn("GEMINI_API_KEY environment variable is missing. Support Bot will fall back to simulation.");
+        return null;
+      }
+      geminiClient = new GoogleGenAI({
+        apiKey: key,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          }
+        }
+      });
+    }
+    return geminiClient;
+  }
+
+  // --- GEMINI CHAT SUPPORT BOT ENDPOINT ---
+  app.post('/api/support/reply', express.json(), async (req, res) => {
+    try {
+      const { message, history, courses, modules } = req.body;
+      if (!message) {
+        return res.status(400).json({ error: 'Missing message parameter' });
+      }
+
+      const client = getGeminiClient();
+      if (!client) {
+        return res.json({
+          reply: `Olá! Eu sou o Dr. Gabriel (IA Simulado): O sistema do tutor de IA está temporariamente carregando ou o servidor não possui a chave GEMINI_API_KEY.
+          
+No momento, detectei sua mensagem e posso lhe adiantar que temos cursos incríveis de silvestres na plataforma! Como o ${courses?.[0]?.title || 'Curso de Anestesiologia de Selvagens'}. Você tem alguma dúvida sobre as aulas?`
+        });
+      }
+
+      // Format courses context dynamically
+      let coursesContext = "Nenhum curso cadastrado de momento.";
+      if (courses && Array.isArray(courses) && courses.length > 0) {
+        coursesContext = courses.map((c: any) => {
+          const courseModules = (modules || []).filter((m: any) => m.courseId === c.id);
+          const modulesDesc = courseModules.map((m: any) => {
+            const lessonsDesc = (m.lessons || []).map((l: any) => `- ${l.title} (${l.duration || 'N/A'})`).join('\n');
+            return `Módulo: ${m.title} - Descrição: ${m.description}\nAulas:\n${lessonsDesc}`;
+          }).join('\n\n');
+
+          return `
+=== CURSO: ${c.title} ===
+ID: ${c.id}
+Categoria: ${c.category}
+Instrutor: ${c.instructorName}
+Preço: R$ ${c.price}
+Carga Horária / Duração: ${c.totalDuration}
+Tipo/Formato: ${c.format}
+Descrição: ${c.description}
+Módulos e Grade Curricular:
+${modulesDesc}
+========================
+`;
+        }).join('\n\n');
+      }
+
+      const systemInstruction = `
+Você é o **Dr. Gabriel (IA)**, o Tutor e Suporte Inteligente e Oficial da **Savana Experience** (Plataforma Premium de Cursos Online e Formação de Residentes Veterinários em Medicina de Animais Silvestres e Exóticos).
+
+Seu papel é:
+1. Tirar todas as dúvidas dos alunos sobre quaisquer assuntos de medicina veterinária de animais silvestres, exóticos e selvagens (clínica, cirurgia, anestesiologia, manejo, patologia, legislações, etc.).
+2. Atuar como um guia especialista de todos os cursos, módulos e aulas disponíveis na plataforma Savana Experience. Você deve saber tudo sobre cada curso (antigo ou novo).
+3. Utilizar o contexto de cursos disponíveis abaixo para divulgar ativamente a nossa grade acadêmica, recomendar cursos específicos de acordo com a dúvida do aluno, e detalhar se temos aulas práticas, módulos ao vivo, links do Meet, etc.
+
+Aqui está o catálogo atualizado e dinâmico de todos os cursos e módulos da plataforma para você consultar:
+${coursesContext}
+
+Regras Importantes de Conduta:
+- Sempre responda de forma muito profissional, empática, acolhedora e focado num ambiente de aprendizado clínico veterinário de alto nível.
+- Escreva suas respostas em português (do Brasil). Use negrito para dar ênfase a tópicos estruturados, nomes de cursos e aulas.
+- Suas falas devem caber bem em bolhas de chat de atendimento. Evite enrolação desnecessária, seja direto e resolutivo, mas muito prestativo.
+- Incentive o aluno a progredir nas aulas e realizar os quizzes médicos para ganhar bônus de XP na plataforma e conquistas/badges de veterinária!
+`;
+
+      const contents = [];
+      
+      // Map history to parts if present
+      if (history && Array.isArray(history)) {
+        for (const turn of history) {
+          if (turn.role === 'user') {
+            contents.push({ role: 'user', parts: [{ text: turn.text }] });
+          } else if (turn.role === 'model') {
+            contents.push({ role: 'model', parts: [{ text: turn.text }] });
+          }
+        }
+      }
+
+      // Add the final user message
+      contents.push({ role: 'user', parts: [{ text: message }] });
+
+      const response = await client.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: contents,
+        config: {
+          systemInstruction: systemInstruction,
+          temperature: 0.7,
+        },
+      });
+
+      const replyText = response.text || "Desculpe, tive um contratempo em processar seu diagnóstico nesse momento. Vamos tentar de novo?";
+      res.json({ reply: replyText });
+    } catch (err: any) {
+      console.error("Error generating answer in Gemini Support:", err);
+      res.status(500).json({ error: err.message || 'Error processing request' });
+    }
+  });
 
   // --- WEB PUSH ENDPOINTS ---
   app.get('/api/push/public-key', (req, res) => {
