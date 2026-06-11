@@ -558,6 +558,35 @@ class StorageEngine {
     });
     this.activeUnsubscribes.push(unsubCertSettings);
 
+    // Email Template Sync
+    const unsubEmailTemplate = onSnapshot(doc(db, 'settings', 'email_template'), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        this.set('emailTemplate', data.template || '');
+      } else {
+        this.set('emailTemplate', `Olá!
+
+Notamos que você realizou sua inscrição via WhatsApp na Savana Experience, mas ainda não concluiu a criação da sua senha de acesso.
+
+Você tem os seguintes cursos liberados aguardando por você:
+{{cursos}}
+
+Para ativar sua conta e liberar suas matérias imediatamente, siga o passo a passo abaixo:
+1. Acesse o portal da Savana: {{link}}
+2. Informe o seu e-mail: {{email}}
+3. Defina sua senha secreta para finalizar o cadastro!
+
+Qualquer dúvida ou caso precise de suporte, basta responder a essa mensagem.
+
+Abraços e bons estudos!
+Dr. Gabriel e equipe Savana Experience.`);
+      }
+      this.notify('emailTemplate');
+    }, (err) => {
+      console.warn("Email Template Sync error: ", err.message);
+    });
+    this.activeUnsubscribes.push(unsubEmailTemplate);
+
     // Issued Certificates Sync
     const unsubIssuedCerts = onSnapshot(
       query(collection(db, 'issuedCertificates'), where('userId', '==', user.uid)),
@@ -657,6 +686,43 @@ class StorageEngine {
       await setDoc(doc(db, 'settings', 'certificates'), cleanUndefined(settings));
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'settings/certificates');
+    }
+  }
+
+  // Email Template Settings
+  getEmailTemplate(): string {
+    return this.get('emailTemplate', `Olá!
+
+Notamos que você realizou sua inscrição via WhatsApp na Savana Experience, mas ainda não concluiu a criação da sua senha de acesso.
+
+Você tem os seguintes cursos liberados aguardando por você:
+{{cursos}}
+
+Para ativar sua conta e liberar suas matérias imediatamente, siga o passo a passo abaixo:
+1. Acesse o portal da Savana: {{link}}
+2. Informe o seu e-mail: {{email}}
+3. Defina sua senha secreta para finalizar o cadastro!
+
+Qualquer dúvida ou caso precise de suporte, basta responder a essa mensagem.
+
+Abraços e bons estudos!
+Dr. Gabriel e equipe Savana Experience.`);
+  }
+
+  async saveEmailTemplate(template: string) {
+    this.set('emailTemplate', template);
+    this.notify('emailTemplate');
+
+    if (!this.isFirebaseAuthenticated) return;
+
+    try {
+      await setDoc(doc(db, 'settings', 'email_template'), cleanUndefined({
+        id: 'email_template',
+        template,
+        updatedAt: new Date().toISOString()
+      }));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'settings/email_template');
     }
   }
 

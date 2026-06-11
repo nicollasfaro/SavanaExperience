@@ -263,6 +263,8 @@ export interface PreRegistration {
   usedBy?: string;
   usedAt?: string;
   createdAt: string;
+  lastEmailSentAt?: string;
+  emailSentCount?: number;
 }
 
 

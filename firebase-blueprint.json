@@ -180,6 +180,18 @@
         "createdAt": { "type": "string" }
       },
       "required": ["id", "email", "courseIds", "used", "createdAt"]
+    },
+    "settings": {
+      "title": "Settings",
+      "description": "General platform settings and custom templates",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "template": { "type": "string" },
+        "type": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "template"]
     }
   },
   "firestore": {
@@ -230,6 +242,10 @@
     "/preRegistrations/{preId}": {
       "schema": "preRegistrations",
       "description": "Student pre-sales register with course access grant configuration mapping list"
+    },
+    "/settings/{settingId}": {
+      "schema": "settings",
+      "description": "General settings collection containing template records"
     }
   }
 }

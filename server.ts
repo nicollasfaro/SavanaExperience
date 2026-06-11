@@ -4,6 +4,7 @@ import { createServer as createViteServer } from "vite";
 import Stripe from "stripe";
 import webpush from "web-push";
 import { GoogleGenAI } from "@google/genai";
+import nodemailer from "nodemailer";
 
 // Web Push API Subscriptions storage
 interface PushSubscriptionStore {
@@ -162,6 +163,161 @@ Regras Importantes de Conduta:
     } catch (err: any) {
       console.error("Error generating answer in Gemini Support:", err);
       res.status(500).json({ error: err.message || 'Error processing request' });
+    }
+  });
+
+  // --- EMAIL SENDER COMPROMISE (SMTP OR RESEND) ---
+  async function sendEmail(to: string, subject: string, body: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    const resendKey = process.env.RESEND_API_KEY;
+    const emailFrom = process.env.SMTP_FROM || process.env.EMAIL_FROM || "Savana Experience <contato@savanaexperience.com.br>";
+
+    // Option 1: Resend HTTP API
+    if (resendKey) {
+      try {
+        const response = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${resendKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: emailFrom,
+            to: [to],
+            subject: subject,
+            text: body,
+            html: body.replace(/\n/g, '<br>')
+          }),
+        });
+
+        if (!response.ok) {
+          const errJson = await response.json().catch(() => ({}));
+          throw new Error(errJson.message || `Resend API returned status ${response.status}`);
+        }
+
+        const resJson = await response.json();
+        return { success: true, messageId: resJson.id };
+      } catch (err: any) {
+        console.error("[Email Service] Erro ao enviar por Resend:", err);
+        return { success: false, error: `Resend: ${err.message}` };
+      }
+    }
+
+    // Option 2: SMTP with nodemailer
+    const smtpHost = process.env.SMTP_HOST;
+    const smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 465;
+    const smtpUser = process.env.SMTP_USER;
+    const smtpPass = process.env.SMTP_PASS;
+
+    if (smtpHost && smtpUser && smtpPass) {
+      try {
+        const isSecure = smtpPort === 465 || process.env.SMTP_SECURE === 'true';
+        const transporter = nodemailer.createTransport({
+          host: smtpHost,
+          port: smtpPort,
+          secure: isSecure,
+          auth: {
+            user: smtpUser,
+            pass: smtpPass,
+          },
+          tls: {
+            rejectUnauthorized: false
+          }
+        });
+
+        const info = await transporter.sendMail({
+          from: emailFrom,
+          to: to,
+          subject: subject,
+          text: body,
+          html: body.replace(/\n/g, '<br>')
+        });
+
+        return { success: true, messageId: info.messageId };
+      } catch (err: any) {
+        console.error("[Email Service] Erro ao enviar por SMTP:", err);
+        return { success: false, error: `SMTP: ${err.message}` };
+      }
+    }
+
+    // If neither is configured
+    return { 
+      success: false, 
+      error: "O servidor de e-mail não está configurado. Por favor, acesse o painel 'Configurações (Secrets)' do seu AI Studio e configure as credenciais SMTP (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM) ou sua chave da API RESEND_API_KEY para habilitar envios de e-mails reais."
+    };
+  }
+
+  // --- WHATSAPP PRE-REGISTER EMAIL DISPATCHER ---
+  app.post('/api/pre-register/send-emails', express.json(), async (req, res) => {
+    try {
+      const { pendingUsers, customTemplate } = req.body;
+      if (!pendingUsers || !Array.isArray(pendingUsers)) {
+        return res.status(400).json({ error: 'Faltando lista de usuários pendentes' });
+      }
+      if (!customTemplate) {
+        return res.status(400).json({ error: 'O modelo de texto não pode ser vazio' });
+      }
+
+      console.log(`[Email Service] Iniciando disparo em lote para ${pendingUsers.length} usuários pendentes...`);
+
+      const origin = req.get('origin') || 'https://savanaexperience.com.br';
+      const results = [];
+      let lastError: string | null = null;
+
+      for (const user of pendingUsers) {
+        const email = user.email || '';
+        const courseNamesList = user.courseTitles || ['Nenhum específico'];
+        const formattedCourses = courseNamesList.map((ct: string) => `• ${ct}`).join('\n');
+
+        // Compile custom template fields
+        let compiledBody = customTemplate
+          .replace(/\{\{email\}\}/g, email)
+          .replace(/\{\{cursos\}\}/g, formattedCourses)
+          .replace(/\{\{link\}\}/g, `${origin}`);
+
+        console.log(`[Email Service] Disparando e-mail real para: ${email}`);
+        
+        const subject = 'Seu acesso aos cursos na Savana Experience está pré-liberado!';
+        const mailRes = await sendEmail(email, subject, compiledBody);
+
+        if (mailRes.success) {
+          results.push({
+            email,
+            dispatchedAt: new Date().toISOString(),
+            status: 'success',
+            subject,
+            body: compiledBody,
+            messageId: mailRes.messageId
+          });
+        } else {
+          lastError = mailRes.error || 'Falha ao transmitir e-mail';
+          results.push({
+            email,
+            dispatchedAt: new Date().toISOString(),
+            status: 'failed',
+            subject,
+            body: compiledBody,
+            error: mailRes.error
+          });
+        }
+      }
+
+      // Check if all failed due to missing configuration
+      const allFailed = results.length > 0 && results.every(r => r.status === 'failed');
+      if (allFailed) {
+        return res.status(500).json({ 
+          error: lastError || 'Falha ao enviar e-mails', 
+          results 
+        });
+      }
+
+      res.json({
+        success: true,
+        sentCount: results.filter(r => r.status === 'success').length,
+        dispatched: results
+      });
+    } catch (err: any) {
+      console.error("Erro no serviço de e-mails para pré-registro:", err);
+      res.status(500).json({ error: err.message || 'Falha ao processar e-mails' });
     }
   });
 

@@ -8,7 +8,7 @@ import { localDB, uploadCourseThumbnail, auth, db } from '../firebase';
 import { 
   Shield, User, UserCheck, UserX, Search, Mail, Award, Sparkles, Filter,
   Plus, Edit, Trash2, Calendar, BookOpen, Layers, Users, Upload, Image, Loader2,
-  Database, RefreshCw, CheckCircle2, AlertCircle, AlertTriangle, X, FileText, UserPlus
+  Database, RefreshCw, CheckCircle2, AlertCircle, AlertTriangle, X, FileText, UserPlus, Send, Save
 } from 'lucide-react';
 import { CertificateSettingsPanel } from './CertificateSettingsPanel';
 
@@ -96,6 +96,11 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
   const [preCourseIds, setPreCourseIds] = useState<string[]>([]);
   const [preSearchTerm, setPreSearchTerm] = useState('');
   const [isSavingPre, setIsSavingPre] = useState(false);
+  const [emailTemplate, setEmailTemplate] = useState(() => localDB.getEmailTemplate());
+  const [isSendingEmails, setIsSendingEmails] = useState(false);
+  const [lastDispatchLog, setLastDispatchLog] = useState<{ email: string; dispatchedAt: string; status: string }[] | null>(null);
+  const [testEmail, setTestEmail] = useState('');
+  const [isSendingTest, setIsSendingTest] = useState(false);
 
   // Toast notifications for a smooth experience without blocking alerts
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -118,7 +123,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
     }, 4000);
   };
 
-  // Sincronização em tempo real de turmas e cursos e recompensas
+  // Sincronização em tempo real de turmas, cursos, recompensas e template de e-mail
   useEffect(() => {
     const unsubTurmas = localDB.onChange('turmas', () => {
       setTurmas(localDB.getTurmas());
@@ -132,11 +137,15 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
     const unsubPre = localDB.onChange('preRegistrations', () => {
       setPreRegistrations(localDB.getPreRegistrations());
     });
+    const unsubTemplate = localDB.onChange('emailTemplate', () => {
+      setEmailTemplate(localDB.getEmailTemplate());
+    });
     return () => {
       unsubTurmas();
       unsubCourses();
       unsubRewards();
       unsubPre();
+      unsubTemplate();
     };
   }, []);
 
@@ -528,6 +537,173 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
         }
       }
     );
+  };
+
+  const handleSendEmailsToPending = async () => {
+    const pending = preRegistrations.filter(p => !p.used);
+    if (pending.length === 0) {
+      showToast("Não há pré-registros com status pendente para enviar e-mails.", "info");
+      return;
+    }
+
+    if (!emailTemplate.trim()) {
+      showToast("Escreva o texto do e-mail antes de disparar.", "error");
+      return;
+    }
+
+    setIsSendingEmails(true);
+    setLastDispatchLog(null);
+    try {
+      // Map course titles to send in the body
+      const pendingUsersData = pending.map(user => {
+        const courseTitles = (user.courseIds || []).map(cid => {
+          const courseObj = adminCourses.find(ac => ac.id === cid);
+          return courseObj ? courseObj.title : cid;
+        });
+        return {
+          email: user.email,
+          courseTitles
+        };
+      });
+
+      const response = await fetch('/api/pre-register/send-emails', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          pendingUsers: pendingUsersData,
+          customTemplate: emailTemplate
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Erro ao disparar e-mails no servidor');
+      }
+
+      const data = await response.json();
+      
+      // Persist template choice to Firestore
+      await localDB.saveEmailTemplate(emailTemplate);
+
+      // Now update the pre-registration states in localDB/Firestore to increment emailSentCount and lastEmailSentAt
+      for (const user of pending) {
+        const updatedUser: PreRegistration = {
+          ...user,
+          emailSentCount: (user.emailSentCount || 0) + 1,
+          lastEmailSentAt: new Date().toISOString()
+        };
+        await localDB.savePreRegistration(updatedUser);
+      }
+
+      showToast(`Disparado com sucesso para ${data.sentCount} alunos pendentes!`, "success");
+      setLastDispatchLog(data.dispatched || []);
+    } catch (err: any) {
+      showToast("Erro ao disparar e-mails: " + (err.message || String(err)), "error");
+    } finally {
+      setIsSendingEmails(false);
+    }
+  };
+
+  const handleSendSingleEmail = async (user: PreRegistration) => {
+    if (!emailTemplate.trim()) {
+      showToast("Escreva o texto do e-mail antes de disparar.", "error");
+      return;
+    }
+
+    const courseTitles = (user.courseIds || []).map(cid => {
+      const courseObj = adminCourses.find(ac => ac.id === cid);
+      return courseObj ? courseObj.title : cid;
+    });
+
+    try {
+      const response = await fetch('/api/pre-register/send-emails', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          pendingUsers: [{
+            email: user.email,
+            courseTitles
+          }],
+          customTemplate: emailTemplate
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Erro ao disparar e-mail no servidor');
+      }
+
+      const updatedUser: PreRegistration = {
+        ...user,
+        emailSentCount: (user.emailSentCount || 0) + 1,
+        lastEmailSentAt: new Date().toISOString()
+      };
+      await localDB.savePreRegistration(updatedUser);
+
+      showToast(`E-mail de lembrete enviado para ${user.email}!`, "success");
+    } catch (err: any) {
+      showToast("Erro ao disparar lembrete: " + (err.message || String(err)), "error");
+    }
+  };
+
+  const handleSendTestEmail = async () => {
+    if (!testEmail.trim()) {
+      showToast("Por favor, digite um e-mail de teste.", "error");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testEmail.trim())) {
+      showToast("Por favor, insira um e-mail com formato válido para teste.", "error");
+      return;
+    }
+    if (!emailTemplate.trim()) {
+      showToast("Escreva o texto do e-mail antes de disparar.", "error");
+      return;
+    }
+
+    setIsSendingTest(true);
+    try {
+      const sampleCourseTitles = ["Clínica Médica de Felinos (Exemplo)", "Anestesiologia Veterinária (Exemplo)"];
+      const response = await fetch('/api/pre-register/send-emails', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          pendingUsers: [{
+            email: testEmail.trim().toLowerCase(),
+            courseTitles: sampleCourseTitles
+          }],
+          customTemplate: emailTemplate
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Erro ao disparar e-mail de teste no servidor');
+      }
+
+      showToast(`E-mail de teste enviado com sucesso para ${testEmail.trim()}!`, "success");
+      // Save template in case it changed
+      await localDB.saveEmailTemplate(emailTemplate);
+    } catch (err: any) {
+      showToast("Erro ao disparar teste: " + (err.message || String(err)), "error");
+    } finally {
+      setIsSendingTest(false);
+    }
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!emailTemplate.trim()) {
+      showToast("Escreva o texto do e-mail antes de salvar o modelo.", "error");
+      return;
+    }
+    try {
+      await localDB.saveEmailTemplate(emailTemplate);
+      showToast("Modelo de e-mail salvo com sucesso!", "success");
+    } catch (err: any) {
+      showToast("Erro ao salvar modelo: " + (err.message || String(err)), "error");
+    }
   };
 
   // Drag and Drop & File Upload handlers
@@ -2016,77 +2192,192 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 text-left">
-            {/* Form Section */}
-            <div className="lg:col-span-1 bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-sm h-fit">
-              <h3 className="font-display font-medium text-slate-100 text-sm border-b border-slate-800 pb-2">Novo Pré-Registro</h3>
-              
-              <form onSubmit={handleSavePreRegistration} className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] uppercase font-mono tracking-wider text-slate-400">E-mail do Aluno *</label>
-                  <input
-                    type="email"
-                    required
-                    value={preEmail}
-                    onChange={(e) => setPreEmail(e.target.value)}
-                    placeholder="aluno@exemplo.com"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500"
-                  />
+            {/* Left Column Stack (Form + Email Template) */}
+            <div className="lg:col-span-1 space-y-6">
+              {/* Form Section */}
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-sm">
+                <h3 className="font-display font-medium text-slate-100 text-sm border-b border-slate-800 pb-2">Novo Pré-Registro</h3>
+                
+                <form onSubmit={handleSavePreRegistration} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] uppercase font-mono tracking-wider text-slate-400">E-mail do Aluno *</label>
+                    <input
+                      type="email"
+                      required
+                      value={preEmail}
+                      onChange={(e) => setPreEmail(e.target.value)}
+                      placeholder="aluno@exemplo.com"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-[10px] uppercase font-mono tracking-wider text-slate-400">Vincular Cursos Autorizados *</label>
+                    <div className="space-y-2 max-h-[220px] overflow-y-auto bg-slate-950 border border-slate-850 rounded-xl p-3 scrollbar-thin">
+                      {adminCourses.map((c) => {
+                        const isChecked = preCourseIds.includes(c.id);
+                        return (
+                          <label key={c.id} className="flex items-start gap-2.5 hover:bg-slate-900/60 p-1.5 rounded-lg cursor-pointer transition text-xs text-slate-200">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => {
+                                if (isChecked) {
+                                  setPreCourseIds(preCourseIds.filter(id => id !== c.id));
+                                } else {
+                                  setPreCourseIds([...preCourseIds, c.id]);
+                                }
+                              }}
+                              className="mt-0.5 w-4 h-4 text-blue-500 bg-slate-900 border-slate-800 rounded focus:ring-blue-500 shrink-0"
+                            />
+                            <div>
+                              <p className="font-semibold text-slate-200">{c.title}</p>
+                              <span className="text-[10px] text-slate-500 font-mono">ID: {c.id}</span>
+                            </div>
+                          </label>
+                        );
+                      })}
+                      {adminCourses.length === 0 && (
+                        <p className="text-center text-[11px] text-slate-500 font-mono py-2">Nenhum curso cadastrado ainda.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isSavingPre}
+                    className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-blue-800 text-slate-950 font-bold text-xs py-2.5 px-4 rounded-xl transition duration-200 cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    {isSavingPre ? (
+                      <>
+                        <Loader2 className="animate-spin w-4 h-4" />
+                        <span>Salvando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Plus size={14} />
+                        <span>Pré-Registrar E-mail</span>
+                      </>
+                    )}
+                  </button>
+                </form>
+              </div>
+
+              {/* Card 2: Customização e Disparo de E-mail */}
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-sm">
+                <div className="border-b border-slate-800 pb-2 flex items-center justify-between">
+                  <h3 className="font-display font-medium text-slate-100 text-sm">Mensagem Personalizada</h3>
+                  <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider font-mono">
+                    {preRegistrations.filter(p => !p.used).length} pendentes
+                  </span>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="block text-[10px] uppercase font-mono tracking-wider text-slate-400">Vincular Cursos Autorizados *</label>
-                  <div className="space-y-2 max-h-[220px] overflow-y-auto bg-slate-950 border border-slate-850 rounded-xl p-3 scrollbar-thin">
-                    {adminCourses.map((c) => {
-                      const isChecked = preCourseIds.includes(c.id);
-                      return (
-                        <label key={c.id} className="flex items-start gap-2.5 hover:bg-slate-900/60 p-1.5 rounded-lg cursor-pointer transition text-xs text-slate-200">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => {
-                              if (isChecked) {
-                                setPreCourseIds(preCourseIds.filter(id => id !== c.id));
-                              } else {
-                                setPreCourseIds([...preCourseIds, c.id]);
-                              }
-                            }}
-                            className="mt-0.5 w-4 h-4 text-blue-500 bg-slate-900 border-slate-800 rounded focus:ring-blue-500 shrink-0"
-                          />
-                          <div>
-                            <p className="font-semibold text-slate-200">{c.title}</p>
-                            <span className="text-[10px] text-slate-500 font-mono">ID: {c.id}</span>
-                          </div>
-                        </label>
-                      );
-                    })}
-                    {adminCourses.length === 0 && (
-                      <p className="text-center text-[11px] text-slate-500 font-mono py-2">Nenhum curso cadastrado ainda.</p>
+                <p className="text-[11px] text-slate-400 leading-normal">
+                  Personalize o e-mail que é enviado para os usuários que estão com status pendente para notificá-los da liberação do curso.
+                </p>
+
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-[10px] uppercase font-mono tracking-wider text-slate-400">Texto do E-mail</label>
+                      <button
+                        type="button"
+                        onClick={handleSaveTemplate}
+                        className="text-[10px] font-bold text-blue-400 hover:text-blue-300 flex items-center gap-1 transition uppercase tracking-wider font-mono cursor-pointer"
+                        title="Salvar este modelo de mensagem permanentemente"
+                      >
+                        <Save size={11} className="shrink-0 text-blue-400" />
+                        <span>Salvar Modelo</span>
+                      </button>
+                    </div>
+                    <textarea
+                      value={emailTemplate}
+                      onChange={(e) => setEmailTemplate(e.target.value)}
+                      rows={12}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100 focus:outline-none focus:border-blue-500 font-sans leading-relaxed resize-y scrollbar-thin"
+                      placeholder="Template da mensagem de cobrança/lembrete..."
+                    />
+                  </div>
+
+                  {/* Placeholders Guide */}
+                  <div className="bg-slate-950 rounded-xl p-3 border border-slate-850 space-y-1.5">
+                    <span className="block text-[9px] uppercase font-mono tracking-widest text-slate-400 font-bold">Tags Inteligentes</span>
+                    <div className="grid grid-cols-1 gap-1 text-[10px] font-mono text-slate-400">
+                      <div><span className="text-blue-400">{"{{email}}"}</span> : E-mail do aluno</div>
+                      <div><span className="text-blue-400">{"{{cursos}}"}</span> : Cursos pré-liberados</div>
+                      <div><span className="text-blue-400">{"{{link}}"}</span> : Link de acesso à plataforma</div>
+                    </div>
+                  </div>
+
+                  {/* Sending Action Button */}
+                  <button
+                    type="button"
+                    onClick={handleSendEmailsToPending}
+                    disabled={isSendingEmails || preRegistrations.filter(p => !p.used).length === 0}
+                    className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-800 text-slate-950 font-bold text-xs py-2.5 px-4 rounded-xl transition duration-200 cursor-pointer flex items-center justify-center gap-1.5 disabled:text-slate-500 disabled:cursor-not-allowed"
+                  >
+                    {isSendingEmails ? (
+                      <>
+                        <Loader2 className="animate-spin w-4 h-4" />
+                        <span>Disparando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Mail size={14} />
+                        <span>Disparar para todos Pendentes</span>
+                      </>
                     )}
+                  </button>
+
+                  {/* Last Action Feedback Status */}
+                  {lastDispatchLog && (
+                    <div className="text-[10px] font-mono text-emerald-400 bg-emerald-500/5 rounded-xl p-2.5 border border-emerald-500/10 text-center animate-fade-in">
+                      Disparo em lote concluído com sucesso ({lastDispatchLog.length} e-mails)!
+                    </div>
+                  )}
+
+                  {/* Test Dispatch Area */}
+                  <div className="pt-3 border-t border-slate-800/80 space-y-2">
+                    <label className="block text-[10px] uppercase font-mono tracking-wider text-slate-400">
+                      Disparar e-mail de Teste
+                    </label>
+                    <p className="text-[10px] text-slate-500 leading-normal">
+                      Envie uma versão de demonstração com este texto para o e-mail de sua preferência para aprovação.
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="email"
+                        value={testEmail}
+                        onChange={(e) => setTestEmail(e.target.value)}
+                        placeholder="seu-email-teste@gmail.com"
+                        className="flex-grow bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-700 focus:outline-none focus:border-blue-500 font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSendTestEmail}
+                        disabled={isSendingTest}
+                        className="bg-blue-500 hover:bg-blue-600 disabled:bg-slate-800 text-slate-950 font-bold text-[11px] px-3 py-2 rounded-xl transition duration-200 cursor-pointer flex items-center justify-center gap-1 shrink-0 disabled:text-slate-500 disabled:cursor-not-allowed"
+                      >
+                        {isSendingTest ? (
+                          <>
+                            <Loader2 className="animate-spin w-3 h-3" />
+                            <span>Enviando...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Send size={11} />
+                            <span>Enviar Teste</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
-
-                <button
-                  type="submit"
-                  disabled={isSavingPre}
-                  className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-blue-800 text-slate-950 font-bold text-xs py-2.5 px-4 rounded-xl transition duration-200 cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  {isSavingPre ? (
-                    <>
-                      <Loader2 className="animate-spin w-4 h-4" />
-                      <span>Salvando...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Plus size={14} />
-                      <span>Pré-Registrar E-mail</span>
-                    </>
-                  )}
-                </button>
-              </form>
+              </div>
             </div>
 
             {/* List Table Section */}
-            <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-sm flex flex-col">
+            <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-sm flex flex-col h-fit">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
                 <div>
                   <h3 className="font-display font-medium text-slate-100 text-sm">Matrículas Pré-Aprovadas</h3>
@@ -2112,7 +2403,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-slate-800 text-[10px] uppercase font-mono tracking-wider text-slate-500">
-                      <th className="py-2.5 px-3">E-mail do Aluno</th>
+                      <th className="py-2.5 px-3">E-mail do Aluno / Rastreio</th>
                       <th className="py-2.5 px-3">Cursos Permitidos</th>
                       <th className="py-2.5 px-3">Data</th>
                       <th className="py-2.5 px-3">Status</th>
@@ -2131,8 +2422,23 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                         
                         return (
                           <tr key={p.id} className="text-xs hover:bg-slate-950/40 transition">
-                            <td className="py-3 px-3 font-semibold text-slate-100 max-w-[170px] truncate" title={p.email}>
-                              {p.email}
+                            <td className="py-3 px-3 max-w-[220px] truncate" title={p.email}>
+                              <div className="font-semibold text-slate-100 truncate">{p.email}</div>
+                              {p.emailSentCount ? (
+                                <p className="text-[9px] text-blue-400 flex items-center gap-1 mt-1 font-mono">
+                                  <Mail size={10} className="shrink-0" />
+                                  <span>Envios: <strong>{p.emailSentCount}</strong></span>
+                                  {p.lastEmailSentAt && (
+                                    <span className="text-[8px] text-slate-500 shrink-0">
+                                      ({new Date(p.lastEmailSentAt).toLocaleDateString('pt-BR')} às {new Date(p.lastEmailSentAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })})
+                                    </span>
+                                  )}
+                                </p>
+                              ) : (
+                                !p.used && (
+                                  <span className="text-[8px] text-slate-500 italic mt-1 block">Nenhum lembrete enviado ainda</span>
+                                )
+                              )}
                             </td>
                             <td className="py-3 px-3">
                               <div className="flex flex-col gap-1 max-w-[200px]">
@@ -2171,13 +2477,26 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                               )}
                             </td>
                             <td className="py-3 px-3 text-right">
-                              <button
-                                type="button"
-                                onClick={() => handleDeletePreRegistration(p.id)}
-                                className="p-1 px-2.5 rounded-lg hover:bg-red-500/10 text-red-400 hover:text-red-350 font-bold text-[10px] border border-transparent hover:border-red-500/20 transition cursor-pointer"
-                              >
-                                Revogar
-                              </button>
+                              <div className="flex items-center justify-end gap-1.5">
+                                {!p.used && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSendSingleEmail(p)}
+                                    className="p-1 px-2.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/25 text-blue-400 hover:text-blue-350 font-bold text-[10px] border border-blue-500/20 transition cursor-pointer flex items-center gap-1 shrink-0"
+                                    title="Disparar e-mail de lembrete personalizado individual de cobrança"
+                                  >
+                                    <Mail size={12} className="shrink-0" />
+                                    <span>Cobrar Aluno</span>
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeletePreRegistration(p.id)}
+                                  className="p-1 px-2.5 rounded-lg hover:bg-red-500/10 text-red-400 hover:text-red-350 font-bold text-[10px] border border-transparent hover:border-red-500/20 transition cursor-pointer"
+                                >
+                                  Revogar
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
