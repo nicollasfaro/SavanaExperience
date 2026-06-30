@@ -9,7 +9,7 @@ import {
   Video, VideoOff, Mic, MicOff, Hand, MessageSquare, Settings, Users, 
   Tv, Sparkles, Share2, Smile, Volume2, Plus, Trash2, Shield, Play, Square,
   Check, X, ChevronRight, Send, AlertCircle, RefreshCw, PenTool, Eraser,
-  BookOpen, Calendar, Compass, Lock
+  BookOpen, Calendar, Compass, Lock, Upload, FileText, ZoomIn, ZoomOut, MousePointer, ExternalLink
 } from 'lucide-react';
 import { localDB, db, cleanUndefined } from '../firebase';
 import { sendLiveClassPushAlert } from '../lib/pushService';
@@ -53,6 +53,25 @@ export interface ClassroomSession {
   screenShareActive?: boolean;
   screenShareUserId?: string | null;
   screenShareSlideIndex?: number;
+  screenShareType?: 'video' | 'file' | 'canva';
+  uploadedFileName?: string;
+  uploadedFileType?: string;
+  uploadedFileUrl?: string;
+  uploadedFileSlides?: Array<{
+    title: string;
+    subtitle: string;
+    content: string[];
+    visualType?: 'chart' | 'anatomy' | 'table' | 'bullets' | 'custom_image';
+    customImage?: string;
+  }>;
+  drawOnSlides?: boolean;
+  canvaUrl?: string;
+  canvaEmbedUrl?: string;
+  materialZoom?: number;
+  pointerX?: number;
+  pointerY?: number;
+  pointerActive?: boolean;
+  pointerUserName?: string;
 }
 
 // Initial mockup data
@@ -144,6 +163,31 @@ export const getSimulatedVideoUrl = (p: ClassroomParticipant) => {
   }
   return 'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4';
 };
+
+interface VideoPlayerProps {
+  stream: MediaStream | null;
+  muted?: boolean;
+}
+
+export function VideoPlayer({ stream, muted = false }: VideoPlayerProps) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [stream]);
+
+  return (
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      muted={muted}
+      className="w-full h-full object-contain bg-slate-950 rounded-xl"
+    />
+  );
+}
 
 interface ParticipantVideoFeedProps {
   participant: ClassroomParticipant;
@@ -276,6 +320,50 @@ export function SpotlightVideoFeed({ spotlightUser, mediaStream, activeTesterId,
     </div>
   );
 }
+
+interface ScreenShareVideoFeedProps {
+  stream: MediaStream;
+}
+
+export function ScreenShareVideoFeed({ stream }: ScreenShareVideoFeedProps) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    console.log('[ScreenShareVideoFeed] stream changed:', stream ? `tracks: ${stream.getTracks().length}` : 'null');
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.play().catch(err => {
+        console.warn('[ScreenShareVideoFeed] autoplay blocked or error playing stream, retrying muted...', err);
+        if (videoRef.current) {
+          videoRef.current.muted = true;
+          videoRef.current.play().catch(e => console.error('[ScreenShareVideoFeed] final play failed', e));
+        }
+      });
+    }
+  }, [stream]);
+
+  return (
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      muted
+      className="w-full h-full object-contain bg-slate-950"
+    />
+  );
+}
+
+const getCanvaEmbedUrl = (url: string) => {
+  if (!url) return '';
+  // Convert standard Canva design/presentation link to its embed equivalent
+  // Example: https://www.canva.com/design/DAF8E3zG5oM/view?utm_content=...
+  // Should become: https://www.canva.com/design/DAF8E3zG5oM/view?embed
+  if (url.includes('/view')) {
+    const base = url.split('/view')[0];
+    return `${base}/view?embed`;
+  }
+  return url;
+};
 
 export function Classroom({ currentUserId, currentUserName, currentUserRole, myRegistrations = [] }: ClassroomProps) {
   // Sync state key
@@ -650,6 +738,7 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
   const [tool, setTool] = useState<'pen' | 'eraser'>('pen');
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDrawing = useRef(false);
+  const lastPointerSyncRef = useRef<number>(0);
 
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
   const [permissionsError, setPermissionsError] = useState<string | null>(null);
@@ -658,6 +747,7 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
   const [myPeer, setMyPeer] = useState<Peer | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const [remoteScreenStream, setRemoteScreenStream] = useState<MediaStream | null>(null);
 
   // Keep ref up to date to answer calls with the latest media Stream
   useEffect(() => {
@@ -677,13 +767,43 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
 
     peer.on('call', (call) => {
       console.log('Receiving WebRTC call from', call.peer);
-      // Answer the call with our mediaStream if we have it
-      call.answer(mediaStreamRef.current || undefined);
+      
+      const isScreenCall = call.peer.startsWith(`SAVANA_SCREEN_${activeRoomId}_`);
+      
+      if (isScreenCall) {
+        call.answer(undefined);
+      } else {
+        call.answer(mediaStreamRef.current || undefined);
+      }
       
       call.on('stream', (remoteStream) => {
-        // Extract the original user ID from the peer ID string
-        const callerId = call.peer.replace(`SAVANA_${activeRoomId}_`, '');
-        setRemoteStreams(prev => ({ ...prev, [callerId]: remoteStream }));
+        if (isScreenCall) {
+          console.log('Received screenshare stream via incoming call on main peer');
+          setRemoteScreenStream(remoteStream);
+        } else {
+          // Extract the original user ID from the peer ID string
+          const callerId = call.peer.replace(`SAVANA_${activeRoomId}_`, '');
+          setRemoteStreams(prev => ({ ...prev, [callerId]: remoteStream }));
+        }
+      });
+
+      call.on('close', () => {
+        if (isScreenCall) {
+          setRemoteScreenStream(null);
+        } else {
+          const callerId = call.peer.replace(`SAVANA_${activeRoomId}_`, '');
+          setRemoteStreams(prev => {
+            const copy = { ...prev };
+            delete copy[callerId];
+            return copy;
+          });
+        }
+      });
+
+      call.on('error', () => {
+        if (isScreenCall) {
+          setRemoteScreenStream(null);
+        }
       });
     });
 
@@ -717,69 +837,690 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
   // Screen sharing states and streams
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
+  const [myScreenPeer, setMyScreenPeer] = useState<Peer | null>(null);
+  const [showShareMenu, setShowShareMenu] = useState(false);
+  const virtualScreenTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    screenStreamRef.current = screenStream;
+  }, [screenStream]);
+
+  // Clean remote screen stream state if screenshare is disabled globally
+  useEffect(() => {
+    if (!session.screenShareActive) {
+      setRemoteScreenStream(null);
+    }
+  }, [session.screenShareActive]);
+
+  // Screen sharing peer initialization and listener (for screen sharer)
+  useEffect(() => {
+    if (!screenStream || !activeRoomId || !activeTesterId) {
+      if (myScreenPeer) {
+        myScreenPeer.destroy();
+        setMyScreenPeer(null);
+      }
+      return;
+    }
+
+    const screenPeerId = `SAVANA_SCREEN_${activeRoomId}_${activeTesterId}`;
+    console.log('[Screenshare] Registering screenshare peer:', screenPeerId);
+    const screenPeer = new Peer(screenPeerId);
+
+    screenPeer.on('open', () => {
+      console.log('[Screenshare] Screen sharing Peer connected with ID:', screenPeerId);
+    });
+
+    screenPeer.on('call', (call) => {
+      console.log('[Screenshare] Received incoming call on screenshare peer from:', call.peer);
+      // Answer the incoming call from a participant with our real screenshare media stream
+      call.answer(screenStreamRef.current || undefined);
+    });
+
+    setMyScreenPeer(screenPeer);
+
+    return () => {
+      screenPeer.destroy();
+    };
+  }, [screenStream, activeRoomId, activeTesterId]);
+
+  // Screen sharer's screenPeer actively calls all other participants to push the screen stream (dual-direction signaling)
+  useEffect(() => {
+    if (!myScreenPeer || !screenStream || !session.participants) return;
+
+    const activeCalls: any[] = [];
+
+    const callParticipants = () => {
+      session.participants.forEach(p => {
+        if (p.userId !== activeTesterId) {
+          const targetParticipantPeerId = `SAVANA_${activeRoomId}_${p.userId}`;
+          console.log('[Screenshare] Screen peer actively calling participant main peer:', targetParticipantPeerId);
+          try {
+            const call = myScreenPeer.call(targetParticipantPeerId, screenStream);
+            if (call) {
+              activeCalls.push(call);
+              call.on('error', (err) => {
+                console.error('[Screenshare] Error calling participant:', p.userId, err);
+              });
+            }
+          } catch (e) {
+            console.error('[Screenshare] Exception calling participant:', p.userId, e);
+          }
+        }
+      });
+    };
+
+    // Delay slightly to let others' peers open/register
+    const timer = setTimeout(callParticipants, 1500);
+
+    return () => {
+      clearTimeout(timer);
+      activeCalls.forEach(call => {
+        try {
+          call.close();
+        } catch (e) {}
+      });
+    };
+  }, [myScreenPeer, screenStream, session.participants, activeRoomId, activeTesterId]);
+
+  // Participant calls the screenshare peer when screenshare is active and we are not the sharer
+  useEffect(() => {
+    if (!myPeer || !session.screenShareActive || !session.screenShareUserId || session.screenShareUserId === activeTesterId) {
+      setRemoteScreenStream(null);
+      return;
+    }
+
+    let activeCall: any = null;
+
+    // Delay slightly to let the screenshare peer initialize and register on the other side
+    const timer = setTimeout(() => {
+      const targetScreenPeerId = `SAVANA_SCREEN_${activeRoomId}_${session.screenShareUserId}`;
+      console.log('[Screenshare] Initiating connection call to screenshare peer:', targetScreenPeerId);
+      
+      // Call with offerToReceiveVideo: true option so that PeerJS/WebRTC establishes receive-only channels perfectly
+      const call = myPeer.call(targetScreenPeerId, undefined as any, {
+        constraints: {
+          offerToReceiveVideo: true,
+          offerToReceiveAudio: false
+        } as any
+      });
+      
+      if (call) {
+        activeCall = call;
+        call.on('stream', (stream) => {
+          console.log('[Screenshare] Successfully received remote screenshare stream from call!');
+          setRemoteScreenStream(stream);
+        });
+        
+        call.on('close', () => {
+          console.log('[Screenshare] Remote screenshare stream connection closed.');
+          setRemoteScreenStream(null);
+        });
+
+        call.on('error', (err: any) => {
+          console.error('[Screenshare] Screenshare call error:', err);
+          setRemoteScreenStream(null);
+        });
+      }
+    }, 2000);
+
+    return () => {
+      clearTimeout(timer);
+      if (activeCall) {
+        try {
+          activeCall.close();
+        } catch (e) {}
+      }
+    };
+  }, [myPeer, session.screenShareActive, session.screenShareUserId, activeRoomId, activeTesterId]);
+
+  const DEFAULT_SLIDES = [
+    {
+      title: 'Anatomia e Fisiologia de Sacos Aéreos em Psitacídeos',
+      subtitle: 'Anatomia de Sacos Aéreos - Anatomia Respi-Aviária',
+      content: [
+        'Volume Sacal: Ocupa cerca de 10x o volume pulmonar clássico.',
+        'Intubação: Anéis traqueais completos nas aves dificultam balonetes insuflados.',
+        'Temperatura: Monitoração térmica por sonda esofágica.'
+      ],
+      visualType: 'anatomy' as const
+    },
+    {
+      title: 'Protocolos de Indução de Isoflurano por Máscara',
+      subtitle: 'Indução & Dose - Concentração Alveolar Mínima',
+      content: [
+        'Pre-oxigenação: 100% O2 a 1.5 L/min por 3 minutos.',
+        'Faixa de Indução: 3.0% a 4.0% de Isoflurano gradualmente.',
+        'Manutenção Anestésica: 1.5% a 2.5% de acordo com reflexos.'
+      ],
+      visualType: 'chart' as const
+    },
+    {
+      title: 'Sinais Vitais de Segurança & Reversão Aviária',
+      subtitle: 'Monitoramento Crítico - Limites de Alarme de Sobrevida',
+      content: [
+        'Desligar o Isoflurano mantendo O2 a 100% por 3 minutos.',
+        'A recuperação é rápida nas aves pelo seu metabolismo elevado.',
+        'Monitoração do batimento por doppler colocado sobre a artéria ulnar profunda.'
+      ],
+      visualType: 'table' as const
+    }
+  ];
+
+  const compressAndSyncImage = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const max_width = 800;
+        const max_height = 600;
+        let width = img.width;
+        let height = img.height;
+        
+        if (width > max_width) {
+          height *= max_width / width;
+          width = max_width;
+        }
+        if (height > max_height) {
+          width *= max_height / height;
+          height = max_height;
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+          
+          saveSessionState({
+            ...session,
+            screenShareSlideIndex: 0,
+            uploadedFileName: file.name,
+            uploadedFileType: 'image',
+            uploadedFileSlides: [
+              {
+                title: file.name,
+                subtitle: 'Slide de Imagem Carregado',
+                content: ['Apresentação de arquivo local em tempo real.'],
+                visualType: 'custom_image',
+                customImage: dataUrl
+              }
+            ],
+            screenShareType: 'file'
+          });
+        }
+      };
+      img.src = e.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleFileDrop = (file: File) => {
+    if (file.type.startsWith('image/')) {
+      compressAndSyncImage(file);
+      triggerToast(`Imagem "${file.name}" carregada com sucesso!`);
+    } else {
+      const fileName = file.name;
+      const nameLower = fileName.toLowerCase();
+      let slides: Array<{ title: string; subtitle: string; content: string[]; visualType: 'chart' | 'anatomy' | 'table' | 'bullets' }> = [];
+      
+      if (nameLower.includes('gato') || nameLower.includes('felin')) {
+        slides = [
+          {
+            title: 'Anestesia Felina: Particularidades Clínicas',
+            subtitle: 'Sensibilidade a Fármacos e Cardiomiopatia Hipertrófica (CMH)',
+            content: [
+              'Metabolismo hepático limitado (glicuronidação lenta de fenois).',
+              'Cardiomiopatia Hipertrófica Silenciosa: Risco extremo de sobrecarga hídrica.',
+              'Uso cuidadoso de Alfa-2 agonistas (Dexmedetomidina) para evitar bradicardia severa.'
+            ],
+            visualType: 'anatomy'
+          },
+          {
+            title: 'Controle de Via Aérea e Espasmo Laríngeo',
+            subtitle: 'Protocolo de Intubação Sem Trauma em Gatos',
+            content: [
+              'Aplicação de Lidocaína spray (0.1ml) sobre as aritenoides 30s antes de intubar.',
+              'Sondas traqueais sem balonete (tamanho 2.0 a 3.5 mm) para evitar estenose.',
+              'Monitoração obrigatória por Capnografia em tempo real (risco de hipoventilação).'
+            ],
+            visualType: 'chart'
+          },
+          {
+            title: 'Tabela de Doses e Protocolos Combinados',
+            subtitle: 'Tranquilização e Sedação Pré-Anestésica (MPA)',
+            content: [
+              'Alfaxalona (1-2 mg/kg IM) + Butorfanol (0.2 mg/kg IM) para gatos cardiopatas.',
+              'Associação Quetamina + Midazolam + Metadona para procedimentos ortopédicos.',
+              'Recuperação térmica ativa obrigatória (Gatos perdem calor extremamente rápido).'
+            ],
+            visualType: 'table'
+          }
+        ];
+      } else if (nameLower.includes('equin') || nameLower.includes('cavalo')) {
+        slides = [
+          {
+            title: 'Anestesia em Grandes Animais: Equinos',
+            subtitle: 'Particularidades do Posicionamento e Miopatia de Decúbito',
+            content: [
+              'Miopatias e Neuropatias por decúbito: Almofadamento espesso obrigatório.',
+              'Posicionamento de membros: Membro inferior puxado para frente.',
+              'Pressão arterial média (PAM) ideal mantida acima de 70 mmHg para perfusão muscular.'
+            ],
+            visualType: 'anatomy'
+          },
+          {
+            title: 'Indução e Manutenção com Anestésicos Voláteis',
+            subtitle: 'Sistemas com Reinalação de Gases (Valvular)',
+            content: [
+              'Indução rápida com Quetamina + Diazepam pós-sedação profunda com Xilazina.',
+              'Manutenção com Isoflurano ou Sevoflurano em circuito ventilatório assistido.',
+              'Infusão Contínua (Lidocaína/Quetamina) para redução da CAM de voláteis.'
+            ],
+            visualType: 'chart'
+          },
+          {
+            title: 'Monitoramento Cardiorrespiratório',
+            subtitle: 'Parâmetros Clínicos e Emergências',
+            content: [
+              'Frequência cardíaca típica anestesiada: 25 a 45 bpm.',
+              'Ventilação controlada por volume (IPPV) para prevenir hipercapnia.',
+              'Fase de recuperação assistida em baia acolchoada (risco de fraturas no despertar).'
+            ],
+            visualType: 'table'
+          }
+        ];
+      } else if (nameLower.includes('rept') || nameLower.includes('serpente') || nameLower.includes('jabuti')) {
+        slides = [
+          {
+            title: 'Anestesia em Répteis e Animais Exóticos',
+            subtitle: 'Ectotermia e Dependência Metabólica de Temperatura',
+            content: [
+              'Metabolismo dependente da temperatura ambiente ideal (zona térmica preferencial).',
+              'Shunt intracardíaco (direita-esquerda) que altera a velocidade de anestésicos inalatórios.',
+              'Induções muito longas se a temperatura estiver abaixo do ideal.'
+            ],
+            visualType: 'anatomy'
+          },
+          {
+            title: 'Via Aérea, Ventilação e Intubação',
+            subtitle: 'Particularidades Respiratórias de Répteis',
+            content: [
+              'Glote localizada na base da língua: Intubação extremamente fácil.',
+              'Ausência de diafragma: Respiração auxiliada por musculatura intercostal/abdominal.',
+              'Estímulo respiratório regulado por hipóxia (baixo O2), não por hipercapnia.'
+            ],
+            visualType: 'chart'
+          },
+          {
+            title: 'Anestesia Injetável e Recuperação',
+            subtitle: 'Fármacos e reversão em répteis',
+            content: [
+              'Uso de Alfaxalona ou Propofol via veia coccígea ou seio maxilar.',
+              'Recuperação extremamente lenta (pode durar até 12-24 horas).',
+              'Manter o paciente em aquecimento controlado durante toda a fase de despertar.'
+            ],
+            visualType: 'table'
+          }
+        ];
+      } else {
+        const cleanName = fileName.replace(/\.[^/.]+$/, "").replace(/_/g, " ");
+        slides = [
+          {
+            title: `Apresentação: ${cleanName}`,
+            subtitle: 'Material carregado via contingência de aula',
+            content: [
+              `Arquivo: ${fileName}`,
+              `Tipo: ${fileName.split('.').pop()?.toUpperCase() || 'Documento'}`,
+              'Este material foi compartilhado de forma síncrona pelo Professor para toda a turma.'
+            ],
+            visualType: 'bullets'
+          },
+          {
+            title: 'Conteúdo Científico Estruturado',
+            subtitle: 'Análise de Casos Clínicos Relacionados',
+            content: [
+              'Análise de parâmetros fisiológicos e condutas anestésicas sugeridas.',
+              'Revisão bibliográfica e protocolos de dose recomendados.',
+              'Metodologias de triagem e preparo de pacientes críticos em medicina veterinária.'
+            ],
+            visualType: 'chart'
+          },
+          {
+            title: 'Discussão de Condutas Clínicas',
+            subtitle: 'Interação e Perguntas Frequentes',
+            content: [
+              'Uso de quadros e anotações para discussões específicas em tempo real.',
+              'Comparação de eficácia de fármacos e curvas de recuperação anestésica.',
+              'Encerramento do módulo prático com feedback dos residentes e mentores.'
+            ],
+            visualType: 'table'
+          }
+        ];
+      }
+
+      saveSessionState({
+        ...session,
+        screenShareSlideIndex: 0,
+        uploadedFileName: fileName,
+        uploadedFileType: fileName.endsWith('.pptx') || fileName.endsWith('.ppt') ? 'ppt' : 'pdf',
+        uploadedFileSlides: slides,
+        screenShareType: 'file'
+      });
+      
+      triggerToast(`Documento "${fileName}" processado e slides gerados!`);
+    }
+  };
+
+  const presentImportedMaterial = (lesson: any) => {
+    const fileName = lesson.fileName || lesson.title || 'Material de Apoio.pdf';
+    const slides = [
+      {
+        title: lesson.title,
+        subtitle: 'Material de Apoio Importado',
+        content: [
+          lesson.description || 'Este material de apoio foi anexado a este módulo prático para acompanhamento.',
+          `Arquivo: ${fileName}`,
+          'O material está compartilhado de forma síncrona com toda a turma.'
+        ],
+        visualType: 'anatomy' as const
+      },
+      {
+        title: 'Visualização do Documento e Download',
+        subtitle: 'Acesso Síncrono ao Anexo',
+        content: [
+          'Clique no botão de visualização direta para abrir o material em outra guia.',
+          'Os alunos podem visualizar e fazer download síncrono deste anexo.',
+          'Utilize as anotações e rabiscos em tempo real sobre esta tela.'
+        ],
+        visualType: 'table' as const
+      }
+    ];
+
+    saveSessionState({
+      ...session,
+      screenShareSlideIndex: 0,
+      uploadedFileName: fileName,
+      uploadedFileType: lesson.fileType || 'pdf',
+      uploadedFileSlides: slides,
+      uploadedFileUrl: lesson.fileUrl || '',
+      screenShareType: 'file'
+    });
+
+    triggerToast(`Material "${lesson.title}" carregado com sucesso!`);
+  };
+
+  const startVirtualPatientMonitorStream = (): MediaStream => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1280;
+    canvas.height = 720;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return new MediaStream();
+
+    let ecgX = 0;
+    let points: number[] = [];
+    const maxPoints = 200;
+    for (let i = 0; i < maxPoints; i++) points.push(280);
+
+    let hr = 92;
+    let spo2 = 98;
+    let rr = 16;
+    let temp = 38.5;
+
+    let frameCount = 0;
+
+    const animate = () => {
+      frameCount++;
+      
+      // Clear background
+      ctx.fillStyle = '#020617'; // slate-950
+      ctx.fillRect(0, 0, 1280, 720);
+
+      // Grid background
+      ctx.strokeStyle = 'rgba(30, 41, 59, 0.4)'; // slate-800 with transparency
+      ctx.lineWidth = 1;
+      const gridSize = 40;
+      for (let x = 0; x < 1280; x += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, 720);
+        ctx.stroke();
+      }
+      for (let y = 0; y < 720; y += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(1280, y);
+        ctx.stroke();
+      }
+
+      // Header Bar
+      ctx.fillStyle = '#0f172a'; // slate-900
+      ctx.fillRect(0, 0, 1280, 80);
+      ctx.strokeStyle = '#1e293b'; // slate-800
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 80);
+      ctx.lineTo(1280, 80);
+      ctx.stroke();
+
+      // Header Text
+      ctx.fillStyle = '#e2e8f0'; // slate-200
+      ctx.font = 'bold 22px sans-serif';
+      ctx.fillText('🏥 SAVANA XP - MONITOR CLÍNICO VIRTUAL (SÍNCRONO)', 40, 48);
+
+      ctx.fillStyle = '#f59e0b'; // amber-500
+      ctx.font = 'bold 12px monospace';
+      ctx.fillText('🔴 TRANSMISSÃO DE VÍDEO COMPARTILHADO LIVE', 900, 46);
+
+      // Left Column: ECG wave and Anesthesia Parameters
+      ctx.strokeStyle = '#1e293b';
+      ctx.strokeRect(40, 120, 800, 320);
+      ctx.fillStyle = '#090d16';
+      ctx.fillRect(40, 120, 800, 320);
+
+      ctx.fillStyle = '#10b981'; // emerald-500
+      ctx.font = 'bold 14px monospace';
+      ctx.fillText('ECG - DERIVAÇÃO II (M.V. SELEÇÃO)', 60, 150);
+
+      // Dynamic heartbeat wave calculation
+      let targetValue = 280;
+      if (frameCount % 45 === 0) {
+        hr = 88 + Math.floor(Math.random() * 8);
+        spo2 = Math.random() > 0.9 ? 97 : 98;
+        rr = 15 + Math.floor(Math.random() * 3);
+        temp = +(38.4 + Math.random() * 0.3).toFixed(1);
+      }
+
+      const cycle = frameCount % 45;
+      if (cycle === 0) targetValue = 280;
+      else if (cycle === 1) targetValue = 265;
+      else if (cycle === 2) targetValue = 280;
+      else if (cycle === 5) targetValue = 290;
+      else if (cycle === 6) targetValue = 180;
+      else if (cycle === 7) targetValue = 340;
+      else if (cycle === 8) targetValue = 280;
+      else if (cycle === 12) targetValue = 250;
+      else if (cycle === 15) targetValue = 280;
+
+      points.push(targetValue);
+      if (points.length > 720) {
+        points.shift();
+      }
+
+      ctx.beginPath();
+      ctx.strokeStyle = '#10b981';
+      ctx.lineWidth = 3;
+      for (let i = 0; i < points.length; i++) {
+        const xCoord = 60 + i;
+        if (xCoord > 820) break;
+        if (i === 0) {
+          ctx.moveTo(xCoord, points[i]);
+        } else {
+          ctx.lineTo(xCoord, points[i]);
+        }
+      }
+      ctx.stroke();
+
+      // Respiratory wave below ECG
+      ctx.strokeStyle = '#1e293b';
+      ctx.strokeRect(40, 460, 800, 220);
+      ctx.fillStyle = '#090d16';
+      ctx.fillRect(40, 460, 800, 220);
+
+      ctx.fillStyle = '#06b6d4';
+      ctx.font = 'bold 14px monospace';
+      ctx.fillText('RESP - CAPNOGRAFIA E MONITOR RESPINATÓRIO', 60, 490);
+
+      ctx.beginPath();
+      ctx.strokeStyle = '#06b6d4';
+      ctx.lineWidth = 2.5;
+      for (let i = 0; i < points.length; i++) {
+        const xCoord = 60 + i;
+        if (xCoord > 820) break;
+        const respY = 580 + Math.sin((frameCount + i) * 0.08) * 25 + Math.sin((frameCount + i) * 0.02) * 5;
+        if (i === 0) {
+          ctx.moveTo(xCoord, respY);
+        } else {
+          ctx.lineTo(xCoord, respY);
+        }
+      }
+      ctx.stroke();
+
+      // Right Column: Vital signs readouts
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(880, 120, 360, 120);
+      ctx.strokeStyle = '#10b981';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(880, 120, 360, 120);
+      ctx.fillStyle = '#10b981';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillText('FC / HEART RATE (bpm)', 900, 145);
+      ctx.font = 'bold 56px monospace';
+      ctx.fillText(hr.toString(), 900, 205);
+
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(880, 260, 360, 120);
+      ctx.strokeStyle = '#06b6d4';
+      ctx.strokeRect(880, 260, 360, 120);
+      ctx.fillStyle = '#06b6d4';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillText('SpO2 (%)', 900, 285);
+      ctx.font = 'bold 56px monospace';
+      ctx.fillText(`${spo2}%`, 900, 345);
+
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(880, 400, 360, 120);
+      ctx.strokeStyle = '#a855f7';
+      ctx.strokeRect(880, 400, 360, 120);
+      ctx.fillStyle = '#a855f7';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillText('FR / RESP RATE (rpm)', 900, 425);
+      ctx.font = 'bold 56px monospace';
+      ctx.fillText(rr.toString(), 900, 485);
+
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(880, 540, 360, 120);
+      ctx.strokeStyle = '#3b82f6';
+      ctx.strokeRect(880, 540, 360, 120);
+      ctx.fillStyle = '#3b82f6';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillText('TEMP / COMP (°C)', 900, 565);
+      ctx.font = 'bold 56px monospace';
+      ctx.fillText(`${temp}°C`, 900, 625);
+
+      virtualScreenTimerRef.current = requestAnimationFrame(animate);
+    };
+
+    animate();
+
+    const stream = (canvas as any).captureStream ? (canvas as any).captureStream(30) : null;
+    return stream || new MediaStream();
+  };
+
+  const startRealScreenShare = async () => {
+    try {
+      setShowShareMenu(false);
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { cursor: 'always' } as any,
+        audio: false
+      });
+
+      setScreenStream(stream);
+      screenStreamRef.current = stream;
+
+      stream.getVideoTracks()[0].onended = () => {
+        handleStopScreenShareNative();
+      };
+
+      saveSessionState({
+        ...session,
+        screenShareActive: true,
+        screenShareUserId: activeTesterId,
+        screenShareType: 'video',
+        whiteboardActive: false,
+        drawOnSlides: false,
+        materialZoom: 1,
+        pointerActive: false
+      });
+
+      triggerToast("Compartilhamento de tela real iniciado!");
+    } catch (err: any) {
+      console.error("Error starting real screen share:", err);
+      if (err.name === 'NotAllowedError') {
+        triggerToast("Permissão de compartilhamento negada.");
+      } else {
+        triggerToast("O iframe impediu o compartilhamento de tela. Abrindo em nova aba você tem acesso total!");
+      }
+    }
+  };
+
+  const startVirtualScreenShare = () => {
+    try {
+      setShowShareMenu(false);
+      const stream = startVirtualPatientMonitorStream();
+
+      setScreenStream(stream);
+      screenStreamRef.current = stream;
+
+      saveSessionState({
+        ...session,
+        screenShareActive: true,
+        screenShareUserId: activeTesterId,
+        screenShareType: 'video',
+        whiteboardActive: false,
+        drawOnSlides: false,
+        materialZoom: 1,
+        pointerActive: false
+      });
+
+      triggerToast("Monitor Clínico Virtual ativado e compartilhado com os participantes!");
+    } catch (err) {
+      console.error("Error starting virtual monitor:", err);
+      triggerToast("Erro ao iniciar o simulador.");
+    }
+  };
+
+  const handleStopScreenShareNative = () => {
+    stopScreenShare();
+    saveSessionState({
+      ...session,
+      screenShareActive: false,
+      screenShareUserId: null,
+      pointerActive: false
+    });
+    triggerToast("Compartilhamento encerrado.");
+  };
 
   const handleToggleScreenShare = async () => {
     if (session.screenShareActive) {
-      stopScreenShare();
-      saveSessionState({
-        ...session,
-        screenShareActive: false,
-        screenShareUserId: null
-      });
-      triggerToast("Compartilhamento de tela encerrado.");
+      handleStopScreenShareNative();
     } else {
       if (!isTesterInstructor) {
         triggerToast("Apenas o professor/moderador pode iniciar o compartilhamento de tela.");
         return;
       }
-      
-      try {
-        triggerToast("Iniciando compartilhamento de tela...");
-        if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
-          const stream = await navigator.mediaDevices.getDisplayMedia({
-            video: true,
-            audio: false
-          });
-          
-          screenStreamRef.current = stream;
-          setScreenStream(stream);
-          
-          stream.getVideoTracks()[0].onended = () => {
-            stopScreenShare();
-            setSession(prev => {
-              const updated = {
-                ...prev,
-                screenShareActive: false,
-                screenShareUserId: null
-              };
-              sessionStorage.setItem(STATE_KEY, JSON.stringify(updated));
-              return updated;
-            });
-            triggerToast("Compartilhamento de tela interrompido.");
-          };
-          
-          saveSessionState({
-            ...session,
-            screenShareActive: true,
-            screenShareUserId: activeTesterId,
-            screenShareSlideIndex: 0,
-            whiteboardActive: false
-          });
-          triggerToast("Tela compartilhada com sucesso!");
-        } else {
-          throw new Error("getDisplayMedia not supported");
-        }
-      } catch (err: any) {
-        console.warn("Could not capture physical display media (permissions or sandbox iframe limitation). Activating high-fidelity screen simulator fallback.", err);
-        saveSessionState({
-          ...session,
-          screenShareActive: true,
-          screenShareUserId: activeTesterId,
-          screenShareSlideIndex: 0,
-          whiteboardActive: false
-        });
-        triggerToast("Iniciando simulador de tela compartilhada (limitação do ambiente).");
-      }
+      setShowShareMenu(prev => !prev);
     }
   };
 
@@ -789,6 +1530,10 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
       screenStreamRef.current = null;
     }
     setScreenStream(null);
+    if (virtualScreenTimerRef.current) {
+      cancelAnimationFrame(virtualScreenTimerRef.current);
+      virtualScreenTimerRef.current = null;
+    }
   };
 
   // Screen share unmount cleanup
@@ -796,6 +1541,9 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
     return () => {
       if (screenStreamRef.current) {
         screenStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+      if (virtualScreenTimerRef.current) {
+        cancelAnimationFrame(virtualScreenTimerRef.current);
       }
     };
   }, []);
@@ -1195,6 +1943,33 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
         whiteboardData: null
       });
     }
+  };
+
+  const handleMouseMoveOnMaterial = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isTesterInstructor) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    
+    const now = Date.now();
+    if (now - lastPointerSyncRef.current > 150) {
+      lastPointerSyncRef.current = now;
+      saveSessionState({
+        ...session,
+        pointerX: x,
+        pointerY: y,
+        pointerActive: true,
+        pointerUserName: currentUserName
+      });
+    }
+  };
+
+  const handleMouseLeaveMaterial = () => {
+    if (!isTesterInstructor) return;
+    saveSessionState({
+      ...session,
+      pointerActive: false
+    });
   };
 
   // MODERATOR / PROFESSOR COMMANDS
@@ -1977,284 +2752,246 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
                 </div>
               </div>
             ) : session.screenShareActive ? (
-              /* SCREENSHARE STAGE */
-              <div className="absolute inset-0 flex flex-col bg-slate-1050 animate-fade-in" id="screenshare-stage">
+              /* INTERACTIVE MATERIAL SHARING STAGE */
+              <div className="absolute inset-0 flex flex-col bg-slate-950 animate-fade-in" id="material-sharing-stage">
                 {/* Header bar */}
-                <div className="bg-slate-900 border-b border-slate-800 px-4 py-2.5 flex items-center justify-between z-10 w-full">
+                <div className="bg-slate-900 border-b border-slate-800 px-4 py-2 flex flex-wrap items-center justify-between z-10 w-full gap-2">
                   <div className="flex items-center gap-2">
                     <span className="flex h-2 w-2 relative">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
                     </span>
                     <span className="text-xs font-bold font-display text-slate-200 uppercase tracking-wide">
-                      {session.screenShareUserId === activeTesterId ? 'Você está compartilhando a tela' : `Tela de ${session.participants.find(p => p.userId === session.screenShareUserId)?.name || 'Professor'}`}
-                    </span>
-                  </div>
-                  
-                  {/* Indicator info or slides controllers */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] uppercase font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-900/50 px-2.5 py-1 rounded-md">
-                      Transmitindo ao vivo
+                      {session.screenShareUserId === activeTesterId 
+                        ? '📺 VOCÊ ESTÁ COMPARTILHANDO A TELA' 
+                        : `📺 TELA COMPARTILHADA POR ${session.participants.find(p => p.userId === session.screenShareUserId)?.name || 'Professor'}`}
                     </span>
                   </div>
                 </div>
-
+                
                 {/* Content body */}
-                <div className="relative flex-1 flex flex-col items-center justify-center overflow-hidden bg-slate-950 w-full">
-                  {session.screenShareActive && screenStream ? (
-                    /* Display direct real hardware navigator display stream if available */
-                    <video
-                      ref={(el) => {
-                        if (el) {
-                          el.srcObject = screenStream;
-                        }
-                      }}
-                      autoPlay
-                      playsInline
-                      className="w-full h-full object-contain"
-                    />
-                  ) : (
-                    /* High-fidelity Veterinary Classroom Screen Simulator Slide Fallback */
-                    <div className="w-full h-full max-w-4xl mx-auto p-4 flex flex-col justify-between" id="simulated-screenshare-container">
-                      {/* Top slide content */}
-                      {(() => {
-                        const slideIdx = session.screenShareSlideIndex || 0;
-                        return (
-                          <div className="flex-1 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col justify-between shadow-2xl relative overflow-hidden">
-                            {/* OS Sim Topbar header of the Professor's Screen */}
-                            <div className="bg-slate-950 border-b border-slate-800 px-4 py-1.5 flex items-center justify-between text-[11px] text-slate-400 font-sans select-none z-10">
-                              <div className="flex items-center gap-3">
-                                <span className="font-extrabold text-slate-200">📂 Workspace_Prof</span>
-                                <span className="opacity-60 hidden sm:inline">Slides_Anestesia_Psitacídeos.pdf</span>
-                                <span className="text-emerald-400 font-mono text-[9px] bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.2 rounded">TELA COMPARTILHADA DO PROFESSOR</span>
-                              </div>
-                              <div className="flex items-center gap-2 font-mono text-[10px]">
-                                <span>📶 100%</span>
-                                <span>🔋 98%</span>
-                                <span className="text-slate-300">19:30</span>
-                              </div>
-                            </div>
-
-                            {/* Presentation Window Content */}
-                            <div className="flex-1 p-5 flex flex-col justify-between relative bg-slate-950/20">
-                              {/* Medical grids background lines */}
-                              <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-30 pointer-events-none"></div>
-                              
-                              {/* Slide Body */}
-                              {slideIdx === 0 && (
-                                <div className="space-y-4 z-10 text-left">
-                                  <div className="flex justify-between items-start">
-                                    <div>
-                                      <span className="text-[9px] bg-emerald-550/10 text-emerald-400 border border-emerald-550/20 font-bold px-2 py-0.5 rounded uppercase tracking-wider">SLIDE 1/3: ANATOMIA RESPI-AVIÁRIA</span>
-                                      <h3 className="text-base md:text-md font-bold font-display text-slate-100 mt-1">Anatomia e Fisiologia de Sacos Aéreos em Psitacídeos</h3>
-                                    </div>
-                                    <div className="bg-slate-950/80 px-3 py-1.5 rounded-xl border border-slate-800 text-[10px] font-mono text-emerald-400">
-                                      Trachea & Syrinx Analysis
-                                    </div>
-                                  </div>
-
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-                                    {/* Schematic representation of bird air sacs */}
-                                    <div className="bg-slate-950 rounded-xl border border-slate-850 p-4 relative overflow-hidden flex flex-col justify-center min-h-[140px]">
-                                      <div className="absolute top-2 left-2 flex items-center gap-1.5">
-                                        <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                                        <span className="text-[9px] text-slate-550 font-mono">MAPA_PULMONAR_AVES.DICOM</span>
-                                      </div>
-                                      
-                                      <div className="mx-auto flex items-center justify-center pt-2">
-                                        <svg className="w-16 h-16 text-emerald-400" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2">
-                                          {/* Trachea */}
-                                          <line x1="50" y1="10" x2="50" y2="40" strokeWidth="3" />
-                                          {/* Syrinx */}
-                                          <circle cx="50" cy="40" r="4" fill="currentColor" />
-                                          {/* Air sacs circles */}
-                                          <circle cx="35" cy="65" r="12" strokeDasharray="3" className="animate-pulse" />
-                                          <circle cx="65" cy="65" r="12" strokeDasharray="3" className="animate-pulse" />
-                                          <ellipse cx="50" cy="85" rx="10" ry="8" strokeDasharray="3" />
-                                          {/* Highlighted text */}
-                                          <path d="M 35,45 C 40,43 60,43 65,45" />
-                                        </svg>
-                                      </div>
-                                      <span className="text-[9px] text-center text-emerald-450 mt-2 font-mono font-medium animate-pulse">FLUXO UNIDIRECIONAL: Trocas gasosas contínuas (Ar expirado/inspirado)</span>
-                                    </div>
-
-                                    <div className="space-y-3">
-                                      <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-855">
-                                        <p className="text-[10px] text-slate-500 font-mono">DIÁGNOSTICO DE CONDUTA</p>
-                                        <ul className="text-xs text-slate-305 space-y-1 mt-1">
-                                          <li>🦜 <strong>Volume Sacal:</strong> Ocupa cerca de 10x o volume pulmonar clássico.</li>
-                                          <li>⚠️ <strong>Intubação:</strong> Anéis traqueais completos nas aves dificultam balonetes insuflados.</li>
-                                          <li>🌡️ <strong>Temperatura:</strong> Monitoração térmica por sonda esofágica.</li>
-                                        </ul>
-                                      </div>
-
-                                      <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-855 text-left font-sans">
-                                        <p className="text-[10px] text-slate-550 font-mono">DICA DE SUCESSO DO PROFESSOR</p>
-                                        <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
-                                          Sacos aéreos agem como reservatórios. Evite pressões inspiratórias acima de 15 cm H2O para não causar barotrauma de clavícula ou tórax.
-                                        </p>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-
-                              {slideIdx === 1 && (
-                                <div className="space-y-4 z-10 text-left animate-fade-in">
-                                  <div className="flex justify-between items-start">
-                                    <div>
-                                      <span className="text-[9px] bg-indigo-500/10 text-indigo-400 border border-indigo-550/20 font-bold px-2 py-0.5 rounded uppercase tracking-wider">SLIDE 2/3: INDUÇÃO & DOSE</span>
-                                      <h3 className="text-base md:text-md font-bold font-display text-slate-100 mt-1">Protocolos de Indução de Isoflurano por Máscara</h3>
-                                    </div>
-                                    <div className="bg-slate-950/80 px-3 py-1.5 rounded-xl border border-slate-800 text-[10px] font-mono text-indigo-400">
-                                      Concentração Alveolar Mínima
-                                    </div>
-                                  </div>
-
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                                    <div className="bg-slate-950 rounded-xl border border-slate-850 p-4 relative flex flex-col justify-center min-h-[140px]">
-                                      <div className="absolute top-2 left-2 flex items-center gap-1.5">
-                                        <div className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse"></div>
-                                        <span className="text-[9px] text-slate-555 font-mono">VAPORIZADOR_FLOW.DICOM</span>
-                                      </div>
-                                      
-                                      <div className="h-20 w-full flex items-end justify-center gap-2 pt-4 px-4">
-                                        <div className="w-4 bg-indigo-500/20 h-[30%] rounded-t-sm"></div>
-                                        <div className="w-4 bg-indigo-500/40 h-[60%] rounded-t-sm"></div>
-                                        <div className="w-4 bg-indigo-500/60 h-[85%] rounded-t-sm"></div>
-                                        <div className="w-4 bg-indigo-450 h-[98%] rounded-t-sm animate-pulse"></div>
-                                        <div className="w-4 bg-indigo-500/40 h-[40%] rounded-t-sm"></div>
-                                      </div>
-                                      <span className="text-[9px] text-center text-indigo-400 mt-2 font-mono font-medium">Calibração: Isoflurano a 3.5% Estabilizado</span>
-                                    </div>
-
-                                    <div className="space-y-3">
-                                      <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-855 font-sans">
-                                        <p className="text-[10px] text-slate-555 font-mono">PARÂMETROS DA MÁSCARA</p>
-                                        <ul className="text-xs text-slate-300 space-y-1 mt-1">
-                                          <li>🟢 <strong>Pre-oxigenação:</strong> 100% O2 a 1.5 L/min por 3 minutos.</li>
-                                          <li>🟡 <strong>Faixa de Indução:</strong> 3.0% a 4.0% de Isoflurano gradualmente.</li>
-                                          <li>🟢 <strong>Manutenção Anestésica:</strong> 1.5% a 2.5% de acordo com reflexos.</li>
-                                        </ul>
-                                      </div>
-
-                                      <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-855 text-[11px] text-slate-400 leading-normal text-left font-sans">
-                                        <strong className="text-slate-200">Recomendação Profissional:</strong> Utilize adaptador de máscara adaptado com silicone leve para aves de pequeno porte, garantindo vedamento sem compressão sinusal.
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-
-                              {slideIdx === 2 && (
-                                <div className="space-y-4 z-10 text-left animate-fade-in">
-                                  <div className="flex justify-between items-start">
-                                    <div>
-                                      <span className="text-[9px] bg-amber-500/10 text-amber-400 border border-amber-550/20 font-bold px-2 py-0.5 rounded uppercase tracking-wider">SLIDE 3/3: MONITORAMENTO CRÍTICO</span>
-                                      <h3 className="text-base md:text-md font-bold font-display text-slate-100 mt-1">Sinais Vitais de Segurança & Reversão Aviária</h3>
-                                    </div>
-                                    <div className="bg-slate-950/80 px-3 py-1.5 rounded-xl border border-slate-800 text-[10px] font-mono text-amber-400">
-                                      Limites de Alarme de Sobrevida
-                                    </div>
-                                  </div>
-
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                                    <div className="bg-slate-950 rounded-xl border border-slate-850 p-4 text-slate-300 text-xs space-y-2 min-h-[140px] flex flex-col justify-center font-sans">
-                                      <p className="font-bold text-amber-400 text-left">Valores de Referência:</p>
-                                      <p className="text-xs text-slate-400 leading-normal text-left">
-                                        Monitoração do batimento cardíaco por doppler colocado sobre a artéria ulnar profunda ou femoral.
-                                      </p>
-                                      <div className="pt-1.5 flex gap-2">
-                                        <span className="text-[9px] bg-slate-900 border border-slate-800 px-2 py-0.5 rounded text-emerald-400 font-mono">FC Ideal: 280-360bpm</span>
-                                        <span className="text-[9px] bg-slate-900 border border-slate-800 px-2 py-0.5 rounded text-sky-455 font-mono">Temp: 40.2ºC</span>
-                                      </div>
-                                    </div>
-
-                                    <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-855 space-y-3 font-sans">
-                                      <p className="text-[10px] text-slate-555 font-mono text-left">ESTRATÉGIAS DE REVERSÃO E ANALGESIA</p>
-                                      <div className="text-xs text-slate-300 space-y-2 text-left">
-                                        <p className="flex items-start gap-1">
-                                          <span className="text-amber-500 font-bold font-mono">1.</span>
-                                          <span>Desligar o Isoflurano mantendo O2 a 100% por 3 minutos.</span>
-                                        </p>
-                                        <p className="flex items-start gap-1">
-                                          <span className="text-amber-500 font-bold font-mono">2.</span>
-                                          <span>A recuperação é rápida nas aves pelo seu metabolismo elevado.</span>
-                                        </p>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Desktop Simulated Dock footer */}
-                              <div className="hidden sm:flex items-center justify-center gap-2 border-t border-slate-800/60 pt-3 mt-1 z-10">
-                                <div className="bg-slate-900 border border-slate-800/80 px-4 py-1.5 rounded-full flex items-center gap-3 shadow-lg">
-                                  <span className="text-xs font-bold leading-none cursor-pointer filter hover:brightness-110" title="Safari - Savana Experience">🌐</span>
-                                  <span className="text-xs font-bold leading-none cursor-pointer filter hover:brightness-110" title="Slide Presenter Pro">📊</span>
-                                  <span className="text-xs font-bold leading-none cursor-pointer filter hover:brightness-110" title="Dicom Viewer Suite">🔬</span>
-                                  <span className="text-xs font-bold leading-none cursor-pointer filter hover:brightness-110" title="Calculadora Anestésica">🧮</span>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Slide Footer Information / Pagination indicator */}
-                            <div className="flex items-center justify-between border-t border-slate-800/65 bg-slate-950/40 px-4 py-1.5 text-[10px] text-slate-500 font-mono">
-                              <span>MÓDULO DE INTERAÇÃO DISCENTE - Savana Experience</span>
-                              <span>PÁGINA {slideIdx + 1} DE 3</span>
-                            </div>
-                          </div>
-                        );
-                      })()}
-
-                      {/* Screen share slides interactive navigation switcher */}
-                      <div className="flex items-center justify-between mt-3 bg-slate-900 px-4 py-2 rounded-xl border border-slate-800/70 z-10 w-full">
-                        <div className="text-[10px] text-slate-450 text-left">
-                          {isTesterInstructor ? (
-                            <span className="text-amber-400 font-medium font-sans">✨ Você tem o controle dos Slides da Apresentação</span>
-                          ) : (
-                            <span className="font-sans">Acompanhando os slides do Professor</span>
-                          )}
+                <div className="relative flex-1 flex flex-col items-center overflow-hidden bg-slate-950 w-full p-3 justify-start">
+                  
+                  {/* Instructor Controls Panel */}
+                  {isTesterInstructor && (
+                    <div className="mb-3 w-full max-w-4xl bg-slate-900/90 border border-slate-800 rounded-xl p-3 flex flex-col gap-3 z-25 text-left animate-fade-in">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] uppercase font-mono text-amber-500 font-bold bg-amber-500/10 px-2.5 py-0.5 rounded border border-amber-500/20 flex items-center gap-1">
+                            📶 LIVE STREAM ACTIVE
+                          </span>
+                          <span className="text-xs font-bold text-slate-200">Painel de Controle de Transmissão</span>
                         </div>
                         
+                        <div className="flex items-center gap-3">
+                          {/* Zoom buttons */}
+                          <div className="flex items-center bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1.5">
+                            <button
+                              onClick={() => {
+                                const currentZoom = session.materialZoom || 1;
+                                const nextZoom = Math.max(0.6, currentZoom - 0.1);
+                                saveSessionState({ ...session, materialZoom: Number(nextZoom.toFixed(1)) });
+                              }}
+                              className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-slate-100 transition"
+                              title="Afastar Zoom"
+                            >
+                              <ZoomOut className="w-3.5 h-3.5" />
+                            </button>
+                            <span className="text-[10px] font-mono text-slate-300 min-w-[36px] text-center">
+                              Zoom {Math.round((session.materialZoom || 1) * 100)}%
+                            </span>
+                            <button
+                              onClick={() => {
+                                const currentZoom = session.materialZoom || 1;
+                                const nextZoom = Math.min(2.0, currentZoom + 0.1);
+                                saveSessionState({ ...session, materialZoom: Number(nextZoom.toFixed(1)) });
+                              }}
+                              className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-slate-100 transition"
+                              title="Aproximar Zoom"
+                            >
+                              <ZoomIn className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          {/* Draw Toggle button */}
+                          <button
+                            onClick={() => {
+                              const active = !session.drawOnSlides;
+                              saveSessionState({
+                                ...session,
+                                drawOnSlides: active,
+                                whiteboardData: active ? session.whiteboardData : null
+                              });
+                            }}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border transition ${session.drawOnSlides ? 'bg-emerald-500 border-emerald-400 text-slate-950 font-bold' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-750'}`}
+                          >
+                            <PenTool className="w-3.5 h-3.5" />
+                            <span>{session.drawOnSlides ? 'Desativar Rabisco' : '✍️ Rabiscar Tela'}</span>
+                          </button>
+
+                          {session.drawOnSlides && (
+                            <button
+                              onClick={clearWhiteboard}
+                              className="px-2.5 py-1.5 bg-red-650 hover:bg-red-600 text-white rounded-lg text-xs border border-red-700 transition"
+                              title="Limpar rabiscos"
+                            >
+                              Limpar
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-slate-800/60">
+                        <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                          <span>Origem ativa: <span className="text-slate-200 font-semibold">Vídeo Síncrono de Alta Qualidade (WebRTC)</span></span>
+                        </div>
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => {
-                              const currentIdx = session.screenShareSlideIndex || 0;
-                              const nextIdx = (currentIdx - 1 + 3) % 3;
-                              saveSessionState({
-                                ...session,
-                                screenShareSlideIndex: nextIdx
-                              });
-                            }}
-                            className="p-1 px-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-200 transition font-bold disabled:opacity-[0.35] cursor-pointer"
-                            title="Slide Anterior"
-                            disabled={!isTesterInstructor}
+                            onClick={() => setShowShareMenu(true)}
+                            className="px-3 py-1 bg-slate-800 hover:bg-slate-750 text-slate-300 text-[11px] rounded-lg border border-slate-700 transition"
                           >
-                            ◀ Voltar
+                            🔄 Mudar Origem de Vídeo
                           </button>
-                          <span className="text-xs font-mono font-bold text-slate-400 px-1">
-                            Slide {(session.screenShareSlideIndex || 0) + 1}
-                          </span>
                           <button
-                            onClick={() => {
-                              const currentIdx = session.screenShareSlideIndex || 0;
-                              const nextIdx = (currentIdx + 1) % 3;
-                              saveSessionState({
-                                ...session,
-                                screenShareSlideIndex: nextIdx
-                              });
-                            }}
-                            className="p-1 px-2.5 rounded bg-slate-950 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-200 transition font-bold disabled:opacity-[0.35] cursor-pointer"
-                            title="Próximo Slide"
-                            disabled={!isTesterInstructor}
+                            onClick={handleStopScreenShareNative}
+                            className="px-3 py-1 bg-red-650/20 hover:bg-red-650 text-red-400 hover:text-white text-[11px] rounded-lg border border-red-500/30 transition"
                           >
-                            Avançar ▶
+                            Parar Transmissão
                           </button>
                         </div>
                       </div>
                     </div>
                   )}
+
+                  {/* MAIN MATERIAL STAGE DISPLAY WINDOW */}
+                  <div className="w-full h-full max-w-4xl mx-auto flex flex-col justify-between" id="material-display-container">
+                    
+                    {/* View Stage Wrapper with mouse laser pointer tracking */}
+                    <div 
+                      className="relative w-full aspect-[16/10] bg-slate-900 border border-slate-800 rounded-2xl flex flex-col justify-between shadow-2xl overflow-hidden min-h-[380px]"
+                      onMouseMove={handleMouseMoveOnMaterial}
+                      onMouseLeave={handleMouseLeaveMaterial}
+                    >
+                      {/* Scale zoom applied wrapper container */}
+                      <div 
+                        className="absolute inset-0 transition-all duration-300 ease-out flex flex-col justify-between"
+                        style={{
+                          transform: `scale(${session.materialZoom || 1})`,
+                          transformOrigin: 'center'
+                        }}
+                      >
+                        {/* OS Sim Topbar header of the material */}
+                        <div className="bg-slate-950 border-b border-slate-800 px-4 py-2 flex items-center justify-between text-[11px] text-slate-400 font-sans select-none z-10 w-full">
+                          <div className="flex items-center gap-3">
+                            <span className="font-extrabold text-amber-400 flex items-center gap-1">
+                              <Tv className="w-3.5 h-3.5 text-amber-400" /> TELA COMPARTILHADA SÍNCRONA
+                            </span>
+                            <span className="opacity-70 font-mono text-slate-300 truncate max-w-[200px]">
+                              {session.screenShareUserId === activeTesterId ? 'Sua Tela / Janela' : 'Tela do Professor'}
+                            </span>
+                            <span className="text-amber-400 font-mono text-[9px] bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded animate-pulse">
+                              TRANSMISSÃO LIVE
+                            </span>
+                          </div>
+                          
+                          <div className="flex items-center gap-3 font-mono text-[10px]">
+                            {session.drawOnSlides && (
+                              <span className="text-emerald-400 font-bold animate-pulse">✍️ DESENHO ATIVO</span>
+                            )}
+                            <span>📶 100%</span>
+                            <span className="text-slate-300">19:30</span>
+                          </div>
+                        </div>
+
+                        {/* Interactive Whiteboard/Drawing Canvas Overlay */}
+                        {session.drawOnSlides && isTesterInstructor ? (
+                          <canvas
+                            ref={canvasRef}
+                            width={800}
+                            height={450}
+                            className="absolute inset-0 w-full h-full block z-20 cursor-crosshair"
+                            onMouseDown={startDrawing}
+                            onMouseMove={draw}
+                            onMouseUp={stopDrawingAndSync}
+                            onMouseLeave={stopDrawingAndSync}
+                          />
+                        ) : (
+                          session.drawOnSlides && session.whiteboardData && (
+                            <img
+                              src={session.whiteboardData}
+                              alt="Whiteboard annotations"
+                              className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20"
+                            />
+                          )
+                        )}
+
+                        {/* Synced Laser Pointer Overlay Dot */}
+                        {session.pointerActive && session.pointerX !== undefined && session.pointerY !== undefined && (
+                          <div 
+                            className="absolute pointer-events-none z-30 flex flex-col items-center justify-center transition-all duration-100 ease-out"
+                            style={{
+                              left: `${session.pointerX * 100}%`,
+                              top: `${session.pointerY * 100}%`,
+                              transform: 'translate(-50%, -50%)'
+                            }}
+                          >
+                            <span className="relative flex h-5 w-5">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-5 w-5 bg-red-650 shadow-[0_0_12px_rgba(239,68,68,1)] border-2 border-white"></span>
+                            </span>
+                            <span className="mt-1 bg-red-650/90 text-[8px] font-bold text-white px-1.5 py-0.5 rounded border border-red-400/30 whitespace-nowrap shadow-lg">
+                              👇 {session.pointerUserName || 'Professor'} apontando
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Central Presentation Frame */}
+                        <div className="flex-1 flex flex-col justify-center relative bg-slate-950/20 w-full h-full overflow-hidden">
+                          {session.screenShareUserId === activeTesterId ? (
+                            screenStream ? (
+                              <VideoPlayer stream={screenStream} muted={true} />
+                            ) : (
+                              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 p-6 text-center animate-fade-in z-25">
+                                <AlertCircle className="w-12 h-12 text-amber-500 mb-4 animate-pulse" />
+                                <h3 className="text-sm font-bold text-slate-100">Compartilhamento de Tela Ativado</h3>
+                                <p className="text-[11px] text-slate-400 max-w-sm mt-1 mb-4">
+                                  Nenhum fluxo de vídeo ativo. Reinicie o compartilhamento de tela ou ative o Monitor Clínico Virtual.
+                                </p>
+                                <button
+                                  onClick={() => setShowShareMenu(true)}
+                                  className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs uppercase rounded-lg transition"
+                                >
+                                  Iniciar Compartilhamento
+                                </button>
+                              </div>
+                            )
+                          ) : (
+                            remoteScreenStream ? (
+                              <VideoPlayer stream={remoteScreenStream} muted={false} />
+                            ) : (
+                              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 p-6 text-center animate-fade-in z-25">
+                                <RefreshCw className="w-12 h-12 text-amber-500 mb-4 animate-spin" />
+                                <h3 className="text-sm font-bold text-slate-150 font-display">Conectando ao fluxo de vídeo...</h3>
+                                <p className="text-[11px] text-slate-450 max-w-sm mt-1">
+                                  Aguardando o sinal de vídeo da tela compartilhada do apresentador via WebRTC.
+                                </p>
+                                <div className="mt-4 text-[10px] text-slate-550 bg-slate-900 border border-slate-800 p-2.5 rounded-lg max-w-xs text-left leading-normal">
+                                  💡 <span className="font-semibold text-slate-300">Dica:</span> Se a conexão falhar devido a restrições de rede ou iframe, o apresentador pode usar o <span className="font-semibold text-amber-400">Monitor Clínico Virtual</span>, que oferece transmissão sincronizada garantida!
+                                </div>
+                              </div>
+                            )
+                          )}
+                        </div>
+
+                        {/* Footer Information */}
+                        <div className="flex items-center justify-between border-t border-slate-800/65 bg-slate-950/40 px-4 py-1.5 text-[10px] text-slate-550 font-mono w-full">
+                          <span>SAVANA XP • FLUXO DE VÍDEO WEBRTC SÍNCRONO</span>
+                          <span>COMPARTILHAMENTO DE TELA EM ALTA DEFINIÇÃO</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -2404,18 +3141,57 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
                 <span>{session.whiteboardActive ? 'Fechar Lousa' : 'Lousa Digital'}</span>
               </button>
 
-              <button
-                onClick={handleToggleScreenShare}
-                className={`px-4 py-2.5 rounded-xl text-xs font-semibold tracking-wider uppercase transition duration-200 flex items-center gap-2 cursor-pointer ${
-                  session.screenShareActive
-                  ? 'bg-amber-500 text-slate-950 font-bold shadow-lg'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
-                }`}
-                id="btn-toggle-screen-share"
-              >
-                <Tv className="w-4 h-4" />
-                <span>{session.screenShareActive ? 'Parar Tela' : 'Compartilhar Tela'}</span>
-              </button>
+              <div className="relative">
+                <button
+                  onClick={handleToggleScreenShare}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-semibold tracking-wider uppercase transition duration-200 flex items-center gap-2 cursor-pointer ${
+                    session.screenShareActive
+                    ? 'bg-amber-500 text-slate-950 font-bold shadow-lg'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                  }`}
+                  id="btn-toggle-screen-share"
+                >
+                  <Tv className="w-4 h-4" />
+                  <span>{session.screenShareActive ? 'Parar Tela' : 'Compartilhar Tela'}</span>
+                </button>
+
+                {showShareMenu && isTesterInstructor && (
+                  <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-slate-900 border border-slate-800 p-2.5 rounded-xl shadow-2xl z-50 flex flex-col gap-1.5 w-[280px]">
+                    <div className="text-[10px] text-slate-500 font-mono font-semibold uppercase px-2 pb-1 border-b border-slate-800/60">
+                      Origem do Compartilhamento
+                    </div>
+                    
+                    <button
+                      onClick={startRealScreenShare}
+                      className="w-full text-left px-3 py-2 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-xs font-bold text-slate-200 flex items-center gap-2.5 transition"
+                    >
+                      <Tv className="w-4 h-4 text-amber-500" />
+                      <div className="flex flex-col">
+                        <span>Compartilhar Tela Real</span>
+                        <span className="text-[9px] text-slate-500 font-normal font-sans">Aba, janela ou monitor (Requer HTTPS)</span>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={startVirtualScreenShare}
+                      className="w-full text-left px-3 py-2 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-xs font-bold text-slate-200 flex items-center gap-2.5 transition"
+                    >
+                      <Sparkles className="w-4 h-4 text-emerald-400" />
+                      <div className="flex flex-col">
+                        <span>Monitor Clínico (Simulador)</span>
+                        <span className="text-[9px] text-slate-500 font-normal font-sans">ECG interativo garantido no iframe</span>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => setShowShareMenu(false)}
+                      className="w-full text-center py-1.5 hover:bg-slate-850 text-slate-500 hover:text-slate-400 text-[10px] font-semibold transition mt-1"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Right Command keys: Instructor/Professor exclusive Moderation Panel trigger */}
