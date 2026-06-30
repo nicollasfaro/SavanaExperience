@@ -770,11 +770,8 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
       
       const isScreenCall = call.peer.startsWith(`SAVANA_SCREEN_${activeRoomId}_`);
       
-      if (isScreenCall) {
-        call.answer(undefined);
-      } else {
-        call.answer(mediaStreamRef.current || undefined);
-      }
+      // Answer with our media stream if available to establish a stable bidirectional media connection
+      call.answer(mediaStreamRef.current || undefined);
       
       call.on('stream', (remoteStream) => {
         if (isScreenCall) {
@@ -936,8 +933,8 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
       const targetScreenPeerId = `SAVANA_SCREEN_${activeRoomId}_${session.screenShareUserId}`;
       console.log('[Screenshare] Initiating connection call to screenshare peer:', targetScreenPeerId);
       
-      // Call with offerToReceiveVideo: true option so that PeerJS/WebRTC establishes receive-only channels perfectly
-      const call = myPeer.call(targetScreenPeerId, undefined as any, {
+      // Call with our local stream if available to establish a stable bidirectional media connection
+      const call = myPeer.call(targetScreenPeerId, mediaStreamRef.current || undefined as any, {
         constraints: {
           offerToReceiveVideo: true,
           offerToReceiveAudio: false
@@ -1946,30 +1943,11 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
   };
 
   const handleMouseMoveOnMaterial = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isTesterInstructor) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
-    
-    const now = Date.now();
-    if (now - lastPointerSyncRef.current > 150) {
-      lastPointerSyncRef.current = now;
-      saveSessionState({
-        ...session,
-        pointerX: x,
-        pointerY: y,
-        pointerActive: true,
-        pointerUserName: currentUserName
-      });
-    }
+    // Laser pointer is removed per user request
   };
 
   const handleMouseLeaveMaterial = () => {
-    if (!isTesterInstructor) return;
-    saveSessionState({
-      ...session,
-      pointerActive: false
-    });
+    // Laser pointer is removed per user request
   };
 
   // MODERATOR / PROFESSOR COMMANDS
@@ -2926,25 +2904,7 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
                           )
                         )}
 
-                        {/* Synced Laser Pointer Overlay Dot */}
-                        {session.pointerActive && session.pointerX !== undefined && session.pointerY !== undefined && (
-                          <div 
-                            className="absolute pointer-events-none z-30 flex flex-col items-center justify-center transition-all duration-100 ease-out"
-                            style={{
-                              left: `${session.pointerX * 100}%`,
-                              top: `${session.pointerY * 100}%`,
-                              transform: 'translate(-50%, -50%)'
-                            }}
-                          >
-                            <span className="relative flex h-5 w-5">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                              <span className="relative inline-flex rounded-full h-5 w-5 bg-red-650 shadow-[0_0_12px_rgba(239,68,68,1)] border-2 border-white"></span>
-                            </span>
-                            <span className="mt-1 bg-red-650/90 text-[8px] font-bold text-white px-1.5 py-0.5 rounded border border-red-400/30 whitespace-nowrap shadow-lg">
-                              👇 {session.pointerUserName || 'Professor'} apontando
-                            </span>
-                          </div>
-                        )}
+
 
                         {/* Central Presentation Frame */}
                         <div className="flex-1 flex flex-col justify-center relative bg-slate-950/20 w-full h-full overflow-hidden">
