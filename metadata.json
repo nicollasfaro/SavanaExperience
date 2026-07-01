@@ -1,6 +1,6 @@
 {
   "name": "Savana Experience",
   "description": "Plataforma de cursos online premium com gamificação, suporte em tempo real, painel de controle administrativo para professores, fórum e relatórios.",
-  "requestFramePermissions": ["camera", "microphone", "display-capture"],
+  "requestFramePermissions": ["display-capture"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

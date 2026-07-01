@@ -54,6 +54,11 @@ export interface CourseModule {
   liveDate?: string;
   liveRoomId?: string;
   liveTeacherId?: string;
+  
+  // Google Meet external room support
+  isMeet?: boolean;
+  meetLink?: string;
+  meetDateTime?: string;
 }
 
 export interface Lesson {

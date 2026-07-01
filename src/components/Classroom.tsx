@@ -1548,30 +1548,6 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
   // Scroll messages to bottom
   const msgsEndRef = useRef<HTMLDivElement | null>(null);
 
-  // Request both camera and microphone permission on mount so they are granted and ready for active feeds
-  useEffect(() => {
-    let isMounted = true;
-    const requestInitialPermissions = async () => {
-      try {
-        triggerToast("Solicitando permissão para Câmera e Microfone...");
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-        if (isMounted) {
-          // Immediately release the tracks to avoid leaving camera light or mic active until toggled on
-          stream.getTracks().forEach(track => track.stop());
-          triggerToast("Permissões de Câmera e Microfone ativadas com sucesso!");
-        }
-      } catch (err: any) {
-        console.warn("Initial permissions request failed or denied:", err);
-        if (isMounted) {
-          triggerToast("Por favor, garanta que as permissões de Câmera e Microfone estejam liberadas no seu navegador.");
-        }
-      }
-    };
-    requestInitialPermissions();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   // Web Audio API Microphone testing state and refs
   const [isMicTesting, setIsMicTesting] = useState(false);
@@ -2197,6 +2173,48 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             {courseModules.map(mod => {
                               const isModLive = mod.isLive === true;
+                              const isMeet = mod.isMeet === true;
+
+                              if (isMeet) {
+                                const meetDateObj = mod.meetDateTime ? new Date(mod.meetDateTime) : null;
+                                const liveDateStr = meetDateObj ? meetDateObj.toLocaleDateString('pt-BR') : '';
+                                const liveTimeStr = meetDateObj ? meetDateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+
+                                return (
+                                  <div key={mod.id} className="p-4 rounded-xl border transition-all duration-300 flex flex-col justify-between gap-4 bg-slate-900 border-indigo-500/30 hover:border-indigo-500/50 shadow-lg">
+                                    <div className="space-y-1">
+                                      <div className="flex items-center gap-2">
+                                        <span className="flex items-center gap-1.5 text-[9px] uppercase font-mono bg-indigo-950 text-indigo-300 border border-indigo-900 px-2 py-0.5 rounded-full font-bold">
+                                          <span className="h-1.5 w-1.5 bg-indigo-500 rounded-full animate-pulse"></span>
+                                          Microsoft Teams
+                                        </span>
+                                        <span className="text-[9px] uppercase font-mono bg-slate-800 text-slate-300 border border-slate-700 px-2 py-0.5 rounded-full">
+                                          Sala Externa
+                                        </span>
+                                      </div>
+                                      <h5 className="text-sm font-semibold text-slate-205 line-clamp-2">{mod.title}</h5>
+                                      <p className="text-xs text-slate-400 line-clamp-2 leading-normal">{mod.description}</p>
+                                      
+                                      <div className="pt-2 text-[11px] text-slate-400 font-mono space-y-1 bg-slate-950/40 p-2 rounded border border-slate-850 mt-2">
+                                        <p>📅 Agendado: <strong className="text-indigo-300">{liveDateStr} às {liveTimeStr}</strong></p>
+                                      </div>
+                                    </div>
+
+                                    <div className="pt-2 border-t border-slate-850/50 flex items-center justify-end">
+                                      <a
+                                        href={mod.meetLink}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="w-full text-center py-2 bg-indigo-650 hover:bg-indigo-600 border border-indigo-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md hover:scale-[1.02] cursor-pointer"
+                                      >
+                                        <ExternalLink className="w-4 h-4" />
+                                        <span>Entrar como Docente (Teams)</span>
+                                      </a>
+                                    </div>
+                                  </div>
+                                );
+                              }
+
                               return (
                                 <div key={mod.id} className={`p-4 rounded-xl border transition-all duration-300 flex flex-col justify-between gap-4 ${
                                   isModLive 
@@ -2351,7 +2369,93 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                               {courseModules.map(mod => {
                                 const isModLive = mod.isLive === true;
+                                const isMeet = mod.isMeet === true;
                                 const now = new Date();
+
+                                if (isMeet) {
+                                  const meetDateObj = mod.meetDateTime ? new Date(mod.meetDateTime) : null;
+                                  const isSameDay = meetDateObj ? (
+                                    now.getFullYear() === meetDateObj.getFullYear() &&
+                                    now.getMonth() === meetDateObj.getMonth() &&
+                                    now.getDate() === meetDateObj.getDate()
+                                  ) : false;
+                                  const isAtLeast15MinBefore = meetDateObj ? (
+                                    now.getTime() >= meetDateObj.getTime() - (15 * 60 * 1000)
+                                  ) : false;
+                                  const canEnterMeet = isSameDay && isAtLeast15MinBefore;
+
+                                  const openTime = meetDateObj ? new Date(meetDateObj.getTime() - 15 * 60 * 1000) : null;
+                                  const openTimeStr = openTime ? openTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+                                  const meetDateStr = meetDateObj ? meetDateObj.toLocaleDateString('pt-BR') : '';
+                                  const meetTimeStr = meetDateObj ? meetDateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+
+                                  return (
+                                    <div key={mod.id} className={`p-4 rounded-xl border transition-all duration-300 flex flex-col justify-between gap-4 ${
+                                      canEnterMeet 
+                                        ? 'bg-indigo-950/20 border-indigo-500/50 shadow-lg shadow-indigo-500/10' 
+                                        : 'bg-slate-950/40 border-slate-850'
+                                    }`}>
+                                      <div className="space-y-1">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="flex items-center gap-1.5 text-[9px] uppercase font-mono bg-indigo-950 text-indigo-300 border border-indigo-900 px-2 py-0.5 rounded-full font-bold">
+                                            Microsoft Teams
+                                          </span>
+                                          {canEnterMeet ? (
+                                            <span className="flex items-center gap-1.5 text-[9px] uppercase font-mono bg-emerald-950 text-emerald-400 border border-emerald-900 px-2 py-0.5 rounded-full font-bold animate-pulse">
+                                              <span className="h-1.5 w-1.5 bg-emerald-400 rounded-full animate-ping"></span>
+                                              Acesso Liberado
+                                            </span>
+                                          ) : (
+                                            <span className="text-[9px] uppercase font-mono bg-slate-900 text-amber-500 border border-slate-800 px-2 py-0.5 rounded-full font-bold">
+                                              📅 Agendado: {meetDateStr} {meetTimeStr}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <h5 className="text-sm font-semibold text-slate-200 line-clamp-2">{mod.title}</h5>
+                                        <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">{mod.description}</p>
+                                        
+                                        {!canEnterMeet && meetDateObj && (
+                                          <div className="mt-2 text-[10px] text-slate-400 font-mono bg-slate-950 p-2 rounded-lg border border-slate-850">
+                                            🔓 O link do Microsoft Teams será liberado apenas no dia <strong>{meetDateStr}</strong> a partir das <strong>{openTimeStr}</strong> (15 minutos antes do início).
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      <div className="pt-2 border-t border-slate-850/30 flex items-center justify-end">
+                                        {canEnterMeet ? (
+                                          <a
+                                            href={mod.meetLink}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            onClick={() => {
+                                              alert("💡 IMPORTANTE:\nVocê NÃO precisa fazer login com e-mail no Microsoft Teams para entrar na aula ao vivo.\n\nBasta fechar qualquer aviso de login, escolher 'Entrar como convidado' (ou 'Entrar neste navegador') e digitar seu nome para acessar a sala!");
+                                              triggerToast(`Direcionando para o Microsoft Teams da aula: ${mod.title}`);
+                                            }}
+                                            className="w-full text-center py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-lg text-xs font-extrabold transition flex items-center justify-center gap-1.5 shadow-md hover:scale-[1.02] cursor-pointer"
+                                          >
+                                            <Video className="w-4 h-4" />
+                                            <span>Entrar na Aula via Microsoft Teams</span>
+                                          </a>
+                                        ) : (
+                                          <button
+                                            onClick={() => {
+                                              if (!isSameDay) {
+                                                alert(`A sala do Microsoft Teams está agendada para o dia ${meetDateStr} às ${meetTimeStr}.\nO acesso é liberado apenas no dia da aula, a partir de 15 minutos antes (às ${openTimeStr}).`);
+                                              } else {
+                                                alert(`A sala do Microsoft Teams será liberada às ${openTimeStr} (15 minutos antes da aula marcada para as ${meetTimeStr}).\nPor favor, aguarde mais um momento.`);
+                                              }
+                                            }}
+                                            className="w-full text-center py-2 bg-slate-800 border border-slate-700 text-slate-500 rounded-lg text-xs font-semibold cursor-not-allowed flex items-center justify-center gap-1.5"
+                                          >
+                                            <Video className="w-4 h-4 text-slate-600" />
+                                            <span>Link Bloqueado</span>
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                }
+
                                 const liveDateObj = mod.liveDate ? new Date(mod.liveDate) : null;
                                 const isSameDay = liveDateObj ? (
                                   now.getFullYear() === liveDateObj.getFullYear() &&

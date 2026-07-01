@@ -20,6 +20,59 @@ interface StudentDashboardProps {
 export function StudentDashboard({ courses, enrolledCourseIds, user, notifications, onNavigateToCourse }: StudentDashboardProps) {
   const myCourses = courses.filter(c => enrolledCourseIds.includes(c.id));
   
+  // Calculate upcoming Microsoft Teams live meetings (both course-level and module-level)
+  const upcomingEvents = (() => {
+    const events: Array<{
+      id: string;
+      title: string;
+      courseName: string;
+      link: string;
+      date: Date;
+    }> = [];
+
+    // 1. Course-level events
+    courses.forEach(c => {
+      if (enrolledCourseIds.includes(c.id) && c.liveMeetLink && c.liveClassDate) {
+        const dateObj = new Date(c.liveClassDate);
+        events.push({
+          id: `course-event-${c.id}`,
+          title: `Aula Geral ao Vivo: ${c.title}`,
+          courseName: c.title,
+          link: c.liveMeetLink,
+          date: dateObj,
+        });
+      }
+    });
+
+    // 2. Module-level events
+    try {
+      const allModules = localDB.getModules() || [];
+      allModules.forEach(m => {
+        if (enrolledCourseIds.includes(m.courseId) && m.isMeet && m.meetLink && m.meetDateTime) {
+          const dateObj = new Date(m.meetDateTime);
+          const course = courses.find(c => c.id === m.courseId);
+          events.push({
+            id: `module-event-${m.id}`,
+            title: m.title,
+            courseName: course?.title || 'Curso',
+            link: m.meetLink,
+            date: dateObj,
+          });
+        }
+      });
+    } catch (e) {
+      console.warn("Could not retrieve modules for live events:", e);
+    }
+
+    // Filter events happening today or in the future
+    const now = new Date();
+    const limitTime = now.getTime() - (3 * 60 * 60 * 1000); // Keep ongoing events visible for up to 3 hours after start
+
+    return events
+      .filter(ev => ev.date.getTime() >= limitTime)
+      .sort((a, b) => a.date.getTime() - b.date.getTime());
+  })();
+
   // Fake recent activity from notifications
   const recentActivity = notifications.slice(0, 5);
   
@@ -233,8 +286,73 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left Column: My Courses */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="flex items-center gap-2 mb-6">
+        <div className="lg:col-span-2 space-y-8">
+          
+          {/* Próximas Aulas ao Vivo Section */}
+          {upcomingEvents.length > 0 && (
+            <div className="bg-slate-950 border border-slate-850 p-6 rounded-3xl space-y-4 shadow-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  <Calendar className="text-emerald-400" size={20} />
+                  <h3 className="font-display text-lg font-bold text-slate-100">Próximas Aulas ao Vivo (Teams)</h3>
+                </div>
+                <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 font-bold uppercase">
+                  {upcomingEvents.length} {upcomingEvents.length === 1 ? 'evento' : 'eventos'}
+                </span>
+              </div>
+              
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Clique para acessar as transmissões ao vivo agendadas no Microsoft Teams. Não é necessário fazer login com e-mail no aplicativo do Teams para assistir!
+              </p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                {upcomingEvents.map(event => {
+                  const dateStr = event.date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                  const timeStr = event.date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                  
+                  return (
+                    <div 
+                      key={event.id}
+                      className="bg-slate-900 border border-slate-850 p-4 rounded-2xl flex flex-col justify-between hover:border-emerald-500/30 transition-all duration-300 group shadow-lg"
+                    >
+                      <div className="space-y-2">
+                        <span className="inline-block text-[9px] font-mono font-bold bg-indigo-500/10 text-indigo-300 px-2.5 py-0.5 rounded-lg border border-indigo-550/20 uppercase max-w-full truncate">
+                          {event.courseName}
+                        </span>
+                        <h4 className="text-sm font-bold text-slate-200 line-clamp-2 leading-snug group-hover:text-white transition-colors">
+                          {event.title}
+                        </h4>
+                        <div className="text-[11px] text-slate-400 font-mono flex items-center gap-1.5 pt-1">
+                          <span>📅 {dateStr} às {timeStr}</span>
+                        </div>
+                      </div>
+                      
+                      <div className="mt-4 pt-1">
+                        <a
+                          href={event.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => {
+                            alert("💡 IMPORTANTE:\nVocê NÃO precisa fazer login com e-mail no Microsoft Teams para entrar na aula ao vivo.\n\nBasta fechar qualquer aviso de login, escolher 'Entrar como convidado' (ou 'Entrar neste navegador') e digitar seu nome para acessar a sala!");
+                          }}
+                          className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-[11px] uppercase tracking-wider rounded-xl transition duration-300 shadow hover:shadow-lg text-center cursor-pointer hover:scale-[1.01]"
+                        >
+                          Entrar na Sala (Teams)
+                        </a>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Cursos Matriculados block */}
+          <div className="flex items-center gap-2 mb-2">
             <BookOpen className="text-emerald-500" size={20} />
             <h3 className="font-display text-xl font-bold text-slate-100">Cursos Matriculados</h3>
           </div>
@@ -249,11 +367,11 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
                 const progressList = localDB.getProgress(user.userId);
                 const prog = progressList.find(p => p.courseId === course.id);
                 const courseModules = localDB.getModules().filter(m => m.courseId === course.id);
-                const lessons = courseModules.flatMap(m => (m.isLiveClass || m.isLive) 
+                const lessons = courseModules.flatMap(m => (m.isLiveClass || m.isLive || m.isMeet) 
                   ? [{ 
                       id: `live-session-${m.id}`, 
                       moduleId: m.id, 
-                      title: `Aula Ao Vivo: ${m.title}`, 
+                      title: m.isMeet ? `Microsoft Teams: ${m.title}` : `Aula Ao Vivo: ${m.title}`, 
                       description: m.description, 
                       order: 1, 
                       duration: '1h', 
@@ -265,7 +383,7 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
                   if (l.id.startsWith('live-session-')) {
                     const modId = l.id.replace('live-session-', '');
                     const mod = courseModules.find(m => m.id === modId);
-                    if (mod && (mod.isLiveClass || mod.isLive) && !mod.isLive) {
+                    if (mod && (mod.isLiveClass || mod.isLive || mod.isMeet) && !mod.isLive) {
                       return true;
                     }
                   }

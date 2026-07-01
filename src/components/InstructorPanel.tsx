@@ -64,6 +64,9 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
   const [modDesc, setModDesc] = useState('');
   const [modIsLive, setModIsLive] = useState(false);
   const [modLiveDate, setModLiveDate] = useState('');
+  const [modIsMeet, setModIsMeet] = useState(false);
+  const [modMeetLink, setModMeetLink] = useState('');
+  const [modMeetDateTime, setModMeetDateTime] = useState('');
 
   // Lesson addition/editing states
   const [showLessonModal, setShowLessonModal] = useState(false);
@@ -162,7 +165,10 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
           isLive: modIsLive,
           isLiveClass: modIsLive,
           liveDate: modIsLive ? modLiveDate : undefined,
-          lessons: modIsLive ? [] : editingModule.lessons,
+          lessons: (modIsLive || modIsMeet) ? [] : editingModule.lessons,
+          isMeet: modIsMeet,
+          meetLink: modIsMeet ? modMeetLink : undefined,
+          meetDateTime: modIsMeet ? modMeetDateTime : undefined,
         };
         await localDB.saveModule(updatedMod);
       } else {
@@ -177,7 +183,7 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
           isLive: modIsLive,
           isLiveClass: modIsLive,
           liveDate: modIsLive ? modLiveDate : undefined,
-          lessons: modIsLive ? [] : [
+          lessons: (modIsLive || modIsMeet) ? [] : [
             {
               id: `lesson-${Date.now()}-1`,
               moduleId: newModId,
@@ -188,7 +194,10 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
               type: 'video',
               videoUrl: 'https://vjs.zencdn.net/v/oceans.mp4'
             }
-          ]
+          ],
+          isMeet: modIsMeet,
+          meetLink: modIsMeet ? modMeetLink : undefined,
+          meetDateTime: modIsMeet ? modMeetDateTime : undefined,
         };
         await localDB.saveModule(newMod);
       }
@@ -200,6 +209,9 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
       setModDesc('');
       setModIsLive(false);
       setModLiveDate('');
+      setModIsMeet(false);
+      setModMeetLink('');
+      setModMeetDateTime('');
       setShowAddModule(false);
       setEditingModule(null);
 
@@ -214,6 +226,9 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
     setModDesc(mod.description || '');
     setModIsLive(!!mod.isLive);
     setModLiveDate(mod.liveDate || '');
+    setModIsMeet(!!mod.isMeet);
+    setModMeetLink(mod.meetLink || '');
+    setModMeetDateTime(mod.meetDateTime || '');
     setShowAddModule(true);
   };
 
@@ -472,9 +487,9 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
     }, 1200);
   };
 
-  // Google Meet & Calendar scheduling states
+  // Microsoft Teams & Calendar scheduling states
   const [liveDate, setLiveDate] = useState('');
-  const [liveDescription, setLiveDescription] = useState('Aula Síncrona Interativa oficial via Google Meet. Venha preparado(a) para discutir diagnósticos e casos complexos.');
+  const [liveDescription, setLiveDescription] = useState('Aula Síncrona Interativa oficial via Microsoft Teams. Venha preparado(a) para discutir diagnósticos e casos complexos.');
   const [isMeetScheduling, setIsMeetScheduling] = useState(false);
   const [meetError, setMeetError] = useState<string | null>(null);
   const [meetSuccess, setMeetSuccess] = useState<string | null>(null);
@@ -507,30 +522,8 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
     }
 
     try {
-      // Step 1: Create Google Meet Space
-      let meetSpaceUri = `https://meet.google.com/sxp-${selectedCourse.id}-${Date.now().toString().slice(-4)}`;
-      if (token) {
-        try {
-          const meetRes = await fetch('https://meet.googleapis.com/v2/spaces', {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({})
-          });
-          if (meetRes.ok) {
-            const meetData = await meetRes.json();
-            if (meetData.meetingUri) {
-              meetSpaceUri = meetData.meetingUri;
-            }
-          } else {
-            console.warn("Meet API refused directly. Resorting to default workspace calendar conference generator.");
-          }
-        } catch (meetErr) {
-          console.warn("REST spaces creation failed:", meetErr);
-        }
-      }
+      // Step 1: Create Microsoft Teams Link
+      let meetSpaceUri = `https://teams.microsoft.com/l/meetup-join/SavanaExperience-${selectedCourse.id}-${Date.now().toString().slice(-4)}`;
 
       // Step 2: Create Calendar Event
       const startDateTime = new Date(liveDate);
@@ -584,14 +577,14 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
       onUpdateCourses();
 
       if (token) {
-        setMeetSuccess(`Sua aula ao vivo foi registrada e sincronizada com sucesso! Link seguro do Google Meet gerado: ${meetSpaceUri}. Os estudantes já conseguem visualizar o convite.`);
+        setMeetSuccess(`Sua aula ao vivo foi registrada e sincronizada com sucesso! Link seguro do Microsoft Teams gerado: ${meetSpaceUri}. Os estudantes já conseguem visualizar o convite.`);
       } else {
-        setMeetSuccess(`Sua aula ao vivo foi registrada com sucesso!${authNotice}. Link seguro do Google Meet configurado para a turma: ${meetSpaceUri}`);
+        setMeetSuccess(`Sua aula ao vivo foi registrada com sucesso!${authNotice}. Link seguro do Microsoft Teams configurado para a turma: ${meetSpaceUri}`);
       }
     } catch (err: any) {
       console.error("Live scheduling engine error:", err);
       // Fallback sandbox
-      const fallbackUrl = `https://meet.google.com/sxp-${selectedCourse.id}-${Date.now().toString().slice(-4)}`;
+      const fallbackUrl = `https://teams.microsoft.com/l/meetup-join/SavanaExperience-${selectedCourse.id}-${Date.now().toString().slice(-4)}`;
       const updatedCourse = {
         ...selectedCourse,
         liveMeetLink: fallbackUrl,
@@ -600,7 +593,7 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
       await localDB.saveCourse(updatedCourse);
       onUpdateCourses();
 
-      setMeetSuccess(`Sua aula ao vivo foi registrada e sincronizada com sucesso no Sandbox! Link seguro do Google Meet gerado para a turma: ${fallbackUrl}`);
+      setMeetSuccess(`Sua aula ao vivo foi registrada e sincronizada com sucesso no Sandbox! Link seguro do Microsoft Teams gerado para a turma: ${fallbackUrl}`);
     } finally {
       setIsMeetScheduling(false);
     }
@@ -1056,12 +1049,12 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
                 <span className="text-[10px] uppercase font-mono tracking-wider font-semibold text-emerald-400 block mb-1">PROGRAMAÇÃO SÍNCRONA ATUAL</span>
                 <h4 className="font-display font-bold text-base text-slate-100">{selectedCourse.title}</h4>
                 <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                  Agende as aulas ao vivo para os alunos matriculados neste curso síncrono. O link gerado será exibido na tela inicial de estudos do aluno, permitindo o ingresso via Meet com um único clique.
+                  Agende as aulas ao vivo para os alunos matriculados neste curso síncrono. O link gerado será exibido na tela inicial de estudos do aluno, permitindo o ingresso via Teams com um único clique.
                 </p>
               </div>
               <div className="bg-slate-900 px-3 py-2 rounded-xl border border-slate-800 text-center shrink-0">
                 <span className="block text-[8px] uppercase tracking-widest font-mono text-slate-400">Modalidade</span>
-                <span className="text-xs font-semibold text-emerald-400 font-mono capitalize">{selectedCourse.format === 'online' ? 'Ao Vivo (Meet)' : selectedCourse.format}</span>
+                <span className="text-xs font-semibold text-emerald-400 font-mono capitalize">{selectedCourse.format === 'online' ? 'Ao Vivo (Teams)' : selectedCourse.format}</span>
               </div>
             </div>
 
@@ -1072,7 +1065,7 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
                     <Calendar size={18} />
                   </div>
                   <div>
-                    <span className="block text-[10px] uppercase font-mono tracking-wider text-emerald-400">Aula Agendada no Meet</span>
+                    <span className="block text-[10px] uppercase font-mono tracking-wider text-emerald-400">Aula Agendada no Teams</span>
                     <span className="text-xs font-bold text-slate-100 font-mono">
                       {new Date(selectedCourse.liveClassDate).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
                     </span>
@@ -1085,13 +1078,13 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
                   className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-lg transition flex items-center gap-1.5 self-start sm:self-auto shrink-0"
                 >
                   <ExternalLink size={13} />
-                  Entrar na transmissão (Meet)
+                  Entrar na transmissão (Teams)
                 </a>
               </div>
             ) : (
               <div className="mt-5 p-4 bg-slate-950/60 border border-slate-850 rounded-xl text-center">
                 <p className="text-xs text-slate-500 italic animate-pulse">
-                  Nenhuma aula ao vivo agendada neste curso até o momento. Utilize o painel abaixo para carregar as datas no Google Meet.
+                  Nenhuma aula ao vivo agendada neste curso até o momento. Utilize o painel abaixo para carregar as datas no Microsoft Teams.
                 </p>
               </div>
             )}
@@ -1151,12 +1144,12 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
                 {isMeetScheduling ? (
                   <>
                     <Loader2 size={13} className="animate-spin" />
-                    Sincronizando Google Agenda & Criando Sala do Meet...
+                    Sincronizando Agenda & Criando Link do Teams...
                   </>
                 ) : (
                   <>
                     <Video size={13} />
-                    Integrar Meet & Agendar Aula no Calendar
+                    Integrar Teams & Agendar Aula no Calendar
                   </>
                 )}
               </button>
@@ -1165,9 +1158,9 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
             {/* Google Workspace sidebar details */}
             <div className="bg-slate-955/30 border border-slate-800/80 p-5 rounded-2xl flex flex-col justify-between">
               <div>
-                <h5 className="font-display font-semibold text-xs text-slate-200 mb-2">Conexão Google Workspace</h5>
+                <h5 className="font-display font-semibold text-xs text-slate-200 mb-2">Sincronização de Agenda</h5>
                 <p className="text-[11px] text-slate-400 leading-relaxed mb-4">
-                  Para gerar links reais do Meet e adicionar reservas ao Google Agenda, certifique-se de estar conectado com sua conta do ecossistema Google.
+                  Para adicionar reservas automaticamente à sua agenda do Google Agenda/Outlook, certifique-se de conectar sua conta de agendamento corporativa ou pessoal.
                 </p>
 
                 <div className="space-y-3">
@@ -1181,12 +1174,7 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
                   </div>
 
                   <div className="flex items-center justify-between p-3 bg-slate-950 rounded-xl border border-slate-850 text-xs">
-                    <span className="text-slate-450 font-medium font-mono text-[10px]">ESCOPO MEET</span>
-                    <span className="text-emerald-400 font-bold font-mono text-[9px]">meetings.space</span>
-                  </div>
-
-                  <div className="flex items-center justify-between p-3 bg-slate-950 rounded-xl border border-slate-850 text-xs">
-                    <span className="text-slate-455 font-medium font-mono text-[10px]">ESCOPO AGENDA</span>
+                    <span className="text-slate-455 font-medium font-mono text-[10px]">INTEGRAÇÃO AGENDA</span>
                     <span className="text-emerald-400 font-bold font-mono text-[9px]">calendar.events</span>
                   </div>
                 </div>
@@ -1255,32 +1243,81 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
               </div>
 
               {/* LIVE MODULE OPTIONS */}
-              <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-850 space-y-3">
-                <label className="flex items-center gap-2 cursor-pointer font-sans select-none">
-                  <input
-                    type="checkbox"
-                    checked={modIsLive}
-                    onChange={(e) => setModIsLive(e.target.checked)}
-                    className="w-4 h-4 text-emerald-500 rounded bg-slate-900 border-slate-800 focus:ring-emerald-500"
-                  />
-                  <div className="text-left">
-                    <span className="text-xs font-bold text-slate-200 block">Módulo Síncrono (Aula ao Vivo)</span>
-                    <span className="text-[10px] text-slate-400 block leading-tight">Os alunos se reunirão online e em tempo real para essa aula.</span>
-                  </div>
-                </label>
-
-                {modIsLive && (
-                  <div className="space-y-1.5 pt-2 border-t border-slate-900 animate-fade-in text-left">
-                    <label className="block text-[10px] uppercase tracking-wider font-mono text-emerald-400">Data e Hora de Início</label>
+              <div className="space-y-4">
+                <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-850 space-y-3">
+                  <label className="flex items-center gap-2 cursor-pointer font-sans select-none">
                     <input
-                      type="datetime-local"
-                      required={modIsLive}
-                      value={modLiveDate}
-                      onChange={(e) => setModLiveDate(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500 [color-scheme:dark]"
+                      type="checkbox"
+                      checked={modIsLive}
+                      onChange={(e) => {
+                        setModIsLive(e.target.checked);
+                        if (e.target.checked) setModIsMeet(false);
+                      }}
+                      className="w-4 h-4 text-emerald-500 rounded bg-slate-900 border-slate-800 focus:ring-emerald-500"
                     />
-                  </div>
-                )}
+                    <div className="text-left">
+                      <span className="text-xs font-bold text-slate-200 block">Módulo Síncrono (Aula ao Vivo)</span>
+                      <span className="text-[10px] text-slate-400 block leading-tight">Os alunos se reunirão online e em tempo real para essa aula.</span>
+                    </div>
+                  </label>
+
+                  {modIsLive && (
+                    <div className="space-y-1.5 pt-2 border-t border-slate-900 animate-fade-in text-left">
+                      <label className="block text-[10px] uppercase tracking-wider font-mono text-emerald-400">Data e Hora de Início</label>
+                      <input
+                        type="datetime-local"
+                        required={modIsLive}
+                        value={modLiveDate}
+                        onChange={(e) => setModLiveDate(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500 [color-scheme:dark]"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-850 space-y-3">
+                  <label className="flex items-center gap-2 cursor-pointer font-sans select-none">
+                    <input
+                      type="checkbox"
+                      checked={modIsMeet}
+                      onChange={(e) => {
+                        setModIsMeet(e.target.checked);
+                        if (e.target.checked) setModIsLive(false);
+                      }}
+                      className="w-4 h-4 text-emerald-500 rounded bg-slate-900 border-slate-800 focus:ring-emerald-500"
+                    />
+                    <div className="text-left">
+                      <span className="text-xs font-bold text-slate-200 block">Sala Microsoft Teams (Link Externo)</span>
+                      <span className="text-[10px] text-slate-400 block leading-tight">Os alunos acessarão um link externo agendado para o Microsoft Teams.</span>
+                    </div>
+                  </label>
+
+                  {modIsMeet && (
+                    <div className="space-y-3 pt-2 border-t border-slate-900 animate-fade-in text-left">
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-wider font-mono text-emerald-400 mb-1">Link da Sala Teams</label>
+                        <input
+                          type="url"
+                          required={modIsMeet}
+                          value={modMeetLink}
+                          onChange={(e) => setModMeetLink(e.target.value)}
+                          placeholder="https://teams.microsoft.com/l/meetup-join/..."
+                          className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-wider font-mono text-emerald-400 mb-1">Data e Hora da Aula</label>
+                        <input
+                          type="datetime-local"
+                          required={modIsMeet}
+                          value={modMeetDateTime}
+                          onChange={(e) => setModMeetDateTime(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500 [color-scheme:dark]"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-3">

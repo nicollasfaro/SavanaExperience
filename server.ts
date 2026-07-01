@@ -259,7 +259,7 @@ Regras Importantes de Conduta:
 
       console.log(`[Email Service] Iniciando disparo em lote para ${pendingUsers.length} usuários pendentes...`);
 
-      const origin = req.get('origin') || 'https://savanaexperience.com.br';
+      const origin = 'https://savanaexperience.com.br';
       const results = [];
       let lastError: string | null = null;
 

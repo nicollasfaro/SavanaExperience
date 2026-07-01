@@ -261,7 +261,11 @@ export default function App() {
   }, [localRegistrations, turmas, currentUserId]);
   
   const computedCourses = React.useMemo(() => {
-    return courses.map(course => {
+    let list = courses;
+    if (currentUserRole !== 'instructor') {
+      list = list.filter(course => course.isPublished !== false);
+    }
+    return list.map(course => {
       // 1. Calculate Real Duration
       const courseMods = modules.filter(m => m.courseId === course.id);
       let totalMinutes = 0;
@@ -309,7 +313,7 @@ export default function App() {
         rating: realRating,
       };
     });
-  }, [courses, modules, turmas]);
+  }, [courses, modules, turmas, currentUserRole]);
 
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
@@ -2195,7 +2199,7 @@ export default function App() {
                           <div className="p-4 bg-emerald-950/20 border border-emerald-500/20 rounded-2xl text-left space-y-3 relative overflow-hidden">
                             <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full blur-xl" />
                             <div>
-                              <span className="text-[9px] font-mono font-bold text-emerald-400 uppercase tracking-wider block mb-0.5">TRANSMISSÃO COMPARTILHADA (GOOGLE MEET)</span>
+                              <span className="text-[9px] font-mono font-bold text-emerald-400 uppercase tracking-wider block mb-0.5">TRANSMISSÃO COMPARTILHADA (MICROSOFT TEAMS)</span>
                               <p className="text-xs font-bold text-slate-200">
                                 Próximo Encontro: {selectedCourse.liveClassDate ? new Date(selectedCourse.liveClassDate).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : 'Horário não agendado'}
                               </p>
@@ -2204,9 +2208,12 @@ export default function App() {
                               href={selectedCourse.liveMeetLink}
                               target="_blank"
                               rel="noopener noreferrer"
+                              onClick={() => {
+                                alert("💡 IMPORTANTE:\nVocê NÃO precisa fazer login com e-mail no Microsoft Teams para entrar na aula ao vivo.\n\nBasta fechar qualquer aviso de login, escolher 'Entrar como convidado' (ou 'Entrar neste navegador') e digitar seu nome para acessar a sala!");
+                              }}
                               className="w-full py-2.5 bg-slate-100 hover:bg-white text-slate-950 font-bold text-xs uppercase tracking-wider rounded-xl transition text-center flex items-center justify-center gap-1.5 cursor-pointer hover:shadow-lg"
                             >
-                              Entrar pelo Google Meet
+                              Entrar pelo Microsoft Teams
                             </a>
                           </div>
                         )}
@@ -2233,22 +2240,6 @@ export default function App() {
               {/* Right Column: Instructor Profile & Lessons Index */}
               <div className="space-y-4">
                 
-                {/* External Calendar sync and export */}
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
-                  <h4 className="text-xs uppercase tracking-wider text-slate-300 font-semibold mb-2">Organização Diária</h4>
-                  <p className="text-[10px] text-slate-400 mb-3.5 leading-relaxed">
-                    Importe nossa agenda periódica e cronogramas de estudo desta matéria para seu aplicativo Google Agenda.
-                  </p>
-                  
-                  <button
-                    onClick={() => handleExportICS(selectedCourse)}
-                    className="w-full py-2.5 bg-slate-950 hover:bg-slate-900 border border-slate-800 hover:border-emerald-500/30 text-slate-205 text-xs font-semibold rounded-xl transition flex items-center justify-center gap-1.5"
-                  >
-                    <Calendar size={13} />
-                    Sincronizar Calendário (.ICS)
-                  </button>
-                </div>
-
                 {/* Certificate Banner (if course concluded 100%) */}
                 {(() => {
                   const courseModules = modules.filter(m => m.courseId === selectedCourse.id);
@@ -2328,7 +2319,7 @@ export default function App() {
                   <div className="space-y-4 text-left">
                     {localDB.getModules().filter(m => m.courseId === selectedCourse.id).map(mod => {
                       const prog = userProgress.find(p => p.courseId === selectedCourse.id);
-                      const isLiveCompleted = (mod.isLiveClass || mod.isLive) && (prog?.completedLessons.includes(`live-session-${mod.id}`) || !mod.isLive);
+                      const isLiveCompleted = (mod.isLiveClass || mod.isLive || mod.isMeet) && (prog?.completedLessons.includes(`live-session-${mod.id}`) || (!mod.isLive && !mod.isMeet));
 
                       return (
                         <div key={mod.id} className="space-y-2 border-b border-slate-900/60 pb-3 last:border-none">
@@ -2336,12 +2327,40 @@ export default function App() {
                             <span className="block text-[10px] uppercase font-mono tracking-wider font-semibold text-emerald-400">
                               {mod.title}
                             </span>
-                            {(mod.isLiveClass || mod.isLive) && (
+                            {(mod.isLiveClass || mod.isLive || mod.isMeet) && (
                               <div className="flex flex-col gap-0.5 mt-1">
                                 {isLiveCompleted ? (
                                   <span className="inline-flex items-center gap-1 text-[9px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 font-bold px-2 py-0.5 rounded font-mono uppercase w-fit">
                                     ✓ Presença Registrada & Aula Concluída
                                   </span>
+                                ) : mod.isMeet ? (
+                                  (() => {
+                                    const now = new Date();
+                                    const meetDateObj = mod.meetDateTime ? new Date(mod.meetDateTime) : null;
+                                    const isSameDay = meetDateObj ? (
+                                      now.getFullYear() === meetDateObj.getFullYear() &&
+                                      now.getMonth() === meetDateObj.getMonth() &&
+                                      now.getDate() === meetDateObj.getDate()
+                                    ) : false;
+                                    const isAtLeast15MinBefore = meetDateObj ? (
+                                      now.getTime() >= meetDateObj.getTime() - (15 * 60 * 1000)
+                                    ) : false;
+                                    const canEnterMeet = isSameDay && isAtLeast15MinBefore;
+
+                                    if (canEnterMeet) {
+                                      return (
+                                        <span className="inline-flex items-center gap-1 text-[9px] bg-red-500/15 text-red-400 border border-red-500/20 font-bold px-2 py-0.5 rounded font-mono uppercase w-fit animate-pulse">
+                                          🔴 AULA AO VIVO (TRANSMITINDO)
+                                        </span>
+                                      );
+                                    } else {
+                                      return (
+                                        <span className="inline-flex items-center gap-1 text-[9px] bg-slate-500/15 text-slate-400 border border-slate-500/20 font-bold px-2 py-0.5 rounded font-mono uppercase w-fit">
+                                          Aula no Microsoft Teams
+                                        </span>
+                                      );
+                                    }
+                                  })()
                                 ) : mod.isLive ? (
                                   <span className="inline-flex items-center gap-1 text-[9px] bg-red-500/15 text-red-400 border border-red-500/20 font-bold px-2 py-0.5 rounded font-mono uppercase w-fit animate-pulse">
                                     🔴 Aula Ao Vivo (Transmitindo)
@@ -2351,9 +2370,9 @@ export default function App() {
                                     Aula Ao Vivo (Finalizada)
                                   </span>
                                 )}
-                                {mod.liveDate && (
+                                {(mod.liveDate || mod.meetDateTime) && (
                                   <span className="text-[10px] text-slate-400 font-mono font-medium block">
-                                    📅 Começa em: {new Date(mod.liveDate).toLocaleString('pt-BR')}
+                                    📅 Começa em: {new Date(mod.liveDate || mod.meetDateTime!).toLocaleString('pt-BR')}
                                   </span>
                                 )}
                               </div>
@@ -2361,9 +2380,106 @@ export default function App() {
                           </div>
                         
                         <div className="space-y-2 pt-1.5">
-                          {(mod.isLiveClass || mod.isLive) ? (
+                          {(mod.isLiveClass || mod.isLive || mod.isMeet) ? (
                             (() => {
                               const now = new Date();
+
+                              if (mod.isMeet) {
+                                const meetDateObj = mod.meetDateTime ? new Date(mod.meetDateTime) : null;
+                                if (!meetDateObj) return null;
+
+                                const isSameDay = now.getFullYear() === meetDateObj.getFullYear() &&
+                                                  now.getMonth() === meetDateObj.getMonth() &&
+                                                  now.getDate() === meetDateObj.getDate();
+                                const isAtLeast15MinBefore = now.getTime() >= meetDateObj.getTime() - (15 * 60 * 1000);
+                                const canEnterMeet = isSameDay && isAtLeast15MinBefore;
+
+                                const openTime = new Date(meetDateObj.getTime() - 15 * 60 * 1000);
+                                const openTimeStr = openTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                                const meetDateStr = meetDateObj.toLocaleDateString('pt-BR');
+                                const meetTimeStr = meetDateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+                                if (isLiveCompleted) {
+                                  return (
+                                    <div className="w-full flex items-center justify-between p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-400 font-sans">
+                                      <div className="flex items-center gap-2">
+                                        <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />
+                                        <div>
+                                          <span className="font-bold text-[10px] block uppercase tracking-wider">Presença Confirmada</span>
+                                          <span className="text-[9px] opacity-75 block">Parabéns por participar desta aula!</span>
+                                        </div>
+                                      </div>
+                                      <span className="text-[10px] bg-emerald-500/20 text-emerald-350 px-2 py-0.5 rounded font-mono font-bold">+200 XP</span>
+                                    </div>
+                                  );
+                                }
+
+                                return (
+                                  <a
+                                    href={canEnterMeet && hasAccess ? mod.meetLink : undefined}
+                                    target={canEnterMeet && hasAccess ? "_blank" : undefined}
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => {
+                                      if (!hasAccess) return;
+                                      if (!canEnterMeet) {
+                                        e.preventDefault();
+                                        if (!isSameDay) {
+                                          alert(`A sala do Microsoft Teams está agendada para o dia ${meetDateStr} às ${meetTimeStr}.\nO acesso é liberado apenas no dia da aula, a partir de 15 minutos antes (às ${openTimeStr}).`);
+                                        } else {
+                                          alert(`A sala do Microsoft Teams será liberada hoje às ${openTimeStr} (15 minutos antes da aula marcada para as ${meetTimeStr}).\nPor favor, aguarde mais um momento.`);
+                                        }
+                                        return;
+                                      }
+
+                                      // Inform about how to enter Microsoft Teams
+                                      alert("💡 IMPORTANTE:\nVocê NÃO precisa fazer login com e-mail no Microsoft Teams para entrar na aula ao vivo.\n\nBasta fechar qualquer aviso de login, escolher 'Entrar como convidado' (ou 'Entrar neste navegador') e digitar seu nome para acessar a sala!");
+
+                                      // Log / claim completion XP for attendance on click
+                                      if (currentUserRole === 'student') {
+                                        const progId = `live-session-${mod.id}`;
+                                        const prog = userProgress.find(p => p.courseId === selectedCourse.id);
+                                        if (prog && !prog.completedLessons.includes(progId)) {
+                                          const updatedCompleted = [...prog.completedLessons, progId];
+                                          const updatedProg = {
+                                            ...prog,
+                                            completedLessons: updatedCompleted,
+                                            xp: (prog.xp || 0) + 200
+                                          };
+                                          localDB.saveProgress(currentUserId, updatedProg);
+                                          setUserProgress(prev => prev.map(p => p.id === prog.id ? updatedProg : p));
+                                          setTimeout(() => {
+                                            alert('✓ Presença registrada! Você ganhou +200 XP por participar da aula no Microsoft Teams.');
+                                          }, 200);
+                                        }
+                                      }
+                                    }}
+                                    className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all text-left font-sans select-none gap-2.5 ${
+                                      canEnterMeet && hasAccess
+                                        ? 'bg-rose-500 hover:bg-rose-400 border-rose-500 text-white shadow-lg shadow-rose-500/10 hover:scale-[1.01] active:scale-[0.99] cursor-pointer'
+                                        : !hasAccess
+                                          ? 'opacity-65 cursor-not-allowed bg-slate-950/25 border-slate-800 text-slate-500'
+                                          : 'bg-slate-950/40 border-slate-850 hover:bg-slate-955 hover:border-slate-800 text-slate-300 font-medium cursor-pointer'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <Video className={`w-3.5 h-3.5 shrink-0 ${canEnterMeet ? 'text-white animate-pulse' : 'text-rose-500'}`} />
+                                      <div className="truncate">
+                                        <span className="font-bold text-xs block truncate uppercase tracking-wider">
+                                          {canEnterMeet ? 'Acessar Sala Teams' : 'Aula no Microsoft Teams'}
+                                        </span>
+                                        <span className="text-[10px] opacity-75 block truncate">
+                                          {canEnterMeet 
+                                            ? 'Link liberado! Clique para entrar' 
+                                            : `Permitido a partir das ${openTimeStr}`
+                                          }
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <ChevronRight size={14} className={canEnterMeet ? 'text-white/80' : 'text-slate-505'} />
+                                  </a>
+                                );
+                              }
+
                               const liveDateObj = mod.liveDate ? new Date(mod.liveDate) : null;
 
                               if (isLiveCompleted) {
