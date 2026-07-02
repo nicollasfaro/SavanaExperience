@@ -1,6 +1,5 @@
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import Stripe from "stripe";
 import webpush from "web-push";
 import { GoogleGenAI } from "@google/genai";
@@ -431,6 +430,8 @@ Regras Importantes de Conduta:
   });
 
   if (process.env.NODE_ENV !== "production") {
+    const viteKey = "vite";
+    const { createServer: createViteServer } = await import(viteKey);
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
