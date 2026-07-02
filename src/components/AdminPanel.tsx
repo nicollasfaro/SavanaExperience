@@ -4,7 +4,7 @@ import { collection, getDocs } from 'firebase/firestore';
 import Cropper from 'react-easy-crop';
 import { getCroppedImg } from '../lib/cropUtils';
 import { LeaderboardUser, Course, Turma, PreRegistration } from '../types';
-import { localDB, uploadCourseThumbnail, auth, db } from '../firebase';
+import { localDB, uploadCourseThumbnail, auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { 
   Shield, User, UserCheck, UserX, Search, Mail, Award, Sparkles, Filter,
   Plus, Edit, Trash2, Calendar, BookOpen, Layers, Users, Upload, Image, Loader2,
@@ -27,6 +27,8 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | 'student' | 'instructor'>('all');
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+  const [usersPage, setUsersPage] = useState(1);
+  const ITEMS_PER_PAGE_USERS = 10;
 
   // 2. Turmas management states
   const [turmas, setTurmas] = useState<Turma[]>(() => localDB.getTurmas());
@@ -101,6 +103,8 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
   const [lastDispatchLog, setLastDispatchLog] = useState<{ email: string; dispatchedAt: string; status: string }[] | null>(null);
   const [testEmail, setTestEmail] = useState('');
   const [isSendingTest, setIsSendingTest] = useState(false);
+  const [prePage, setPrePage] = useState(1);
+  const ITEMS_PER_PAGE_PRE = 10;
 
   // Toast notifications for a smooth experience without blocking alerts
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -162,6 +166,12 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
     return matchesSearch && user.role === roleFilter;
   });
 
+  const totalUsersPages = Math.ceil(filteredUsers.length / ITEMS_PER_PAGE_USERS);
+  const paginatedUsers = filteredUsers.slice(
+    (usersPage - 1) * ITEMS_PER_PAGE_USERS,
+    usersPage * ITEMS_PER_PAGE_USERS
+  );
+
   // Filters turmas
   const filteredTurmas = turmas.filter(t => {
     const term = turmaSearchTerm.toLowerCase();
@@ -171,6 +181,16 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
       t.instructorName.toLowerCase().includes(term)
     );
   });
+
+  // Filters and paginated pre-registrations
+  const filteredPreRegistrations = preRegistrations.filter(
+    p => !preSearchTerm || p.email.toLowerCase().includes(preSearchTerm.toLowerCase())
+  );
+  const totalPrePages = Math.ceil(filteredPreRegistrations.length / ITEMS_PER_PAGE_PRE);
+  const paginatedPreRegistrations = filteredPreRegistrations.slice(
+    (prePage - 1) * ITEMS_PER_PAGE_PRE,
+    prePage * ITEMS_PER_PAGE_PRE
+  );
 
   const handleDeleteUser = async (user: LeaderboardUser) => {
     if (user.email === 'ciuldinciuldin@gmail.com') {
@@ -981,14 +1001,20 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                 type="text"
                 placeholder="Buscar por nome de aluno ou endereço de e-mail..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setUsersPage(1);
+                }}
                 className="w-full bg-slate-950/90 border border-slate-800 focus:border-blue-500/60 transition pl-10 pr-4 py-2.5 rounded-xl text-xs text-slate-200 focus:outline-none"
               />
             </div>
 
             <div className="flex items-center gap-1.5 bg-slate-950 p-1.5 rounded-xl border border-slate-850 w-full sm:w-auto overflow-x-auto shrink-0">
               <button
-                onClick={() => setRoleFilter('all')}
+                onClick={() => {
+                  setRoleFilter('all');
+                  setUsersPage(1);
+                }}
                 className={`px-3 py-1.5 text-[10px] font-bold rounded-lg uppercase tracking-wider transition shrink-0 ${
                   roleFilter === 'all' ? 'bg-blue-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'
                 }`}
@@ -996,7 +1022,10 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                 Todos
               </button>
               <button
-                onClick={() => setRoleFilter('student')}
+                onClick={() => {
+                  setRoleFilter('student');
+                  setUsersPage(1);
+                }}
                 className={`px-3 py-1.5 text-[10px] font-bold rounded-lg uppercase tracking-wider transition shrink-0 ${
                   roleFilter === 'student' ? 'bg-slate-800 text-slate-300' : 'text-slate-400 hover:text-slate-200'
                 }`}
@@ -1004,9 +1033,12 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                 Alunos
               </button>
               <button
-                onClick={() => setRoleFilter('instructor')}
+                onClick={() => {
+                  setRoleFilter('instructor');
+                  setUsersPage(1);
+                }}
                 className={`px-3 py-1.5 text-[10px] font-bold rounded-lg uppercase tracking-wider transition shrink-0 ${
-                  roleFilter === 'instructor' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'
+                  roleFilter === 'instructor' ? 'bg-emerald-550 text-slate-950' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 Professores
@@ -1036,7 +1068,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                     </td>
                   </tr>
                 ) : (
-                  filteredUsers.map((user) => {
+                  paginatedUsers.map((user) => {
                     const isAdminUser = user.email === 'ciuldinciuldin@gmail.com';
                     
                     return (
@@ -1162,6 +1194,37 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                 )}
               </tbody>
             </table>
+            
+            {totalUsersPages > 1 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between p-4 border-t border-slate-850 bg-slate-900/10 gap-3">
+                <span className="text-slate-400 text-xs text-center sm:text-left">
+                  Mostrando <strong>{(usersPage - 1) * ITEMS_PER_PAGE_USERS + 1}</strong> a{' '}
+                  <strong>{Math.min(usersPage * ITEMS_PER_PAGE_USERS, filteredUsers.length)}</strong> de{' '}
+                  <strong>{filteredUsers.length}</strong> usuários
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={usersPage === 1}
+                    onClick={() => setUsersPage(prev => Math.max(prev - 1, 1))}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-950 border border-slate-850 hover:bg-slate-900 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  >
+                    Anterior
+                  </button>
+                  <span className="text-slate-300 font-mono text-xs font-semibold min-w-[50px] text-center">
+                    {usersPage} / {totalUsersPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={usersPage === totalUsersPages}
+                    onClick={() => setUsersPage(prev => Math.min(prev + 1, totalUsersPages))}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-950 border border-slate-850 hover:bg-slate-900 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  >
+                    Próximo
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1470,14 +1533,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
         </div>
       )}
 
-      {/* ADMIN NOTES FOOTER */}
-      <div className="mt-6 p-4 bg-slate-950 rounded-2xl border border-slate-850 flex gap-3 items-start">
-        <Sparkles size={16} className="text-blue-405 mt-0.5 shrink-0" />
-        <div className="text-[11px] text-slate-500 leading-normal">
-          <p className="font-bold text-slate-400 uppercase tracking-wider mb-0.5">Nota de Governança e Regência</p>
-          Somente o professor expressamente designado/vinculado à regência da turma correspondente poderá visualizar seus relatórios curriculares, responder o progresso acadêmico da turma e gerenciar os módulos correspondentes. As alterações sincronizam globalmente com Firestore de forma instantânea.
-        </div>
-      </div>
+
 
       {/* FORM MODAL: ADD / EDIT TURMA */}
       {showTurmaModal && (
@@ -2167,7 +2223,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
       )}
       {/* TAB 5: FINANCE REPORT */}
       {adminTab === 'finance' && (
-        <FinanceReport />
+        <FinanceReport courses={adminCourses} />
       )}
 
       {/* TAB 6: CERTIFICATE CUSTOMIZATION SETTINGS */}
@@ -2391,7 +2447,10 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                   <input
                     type="text"
                     value={preSearchTerm}
-                    onChange={(e) => setPreSearchTerm(e.target.value)}
+                    onChange={(e) => {
+                      setPreSearchTerm(e.target.value);
+                      setPrePage(1);
+                    }}
                     placeholder="Filtrar por e-mail..."
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-1.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500 transition"
                   />
@@ -2411,9 +2470,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-850/50">
-                    {preRegistrations
-                      .filter(p => !preSearchTerm || p.email.toLowerCase().includes(preSearchTerm.toLowerCase()))
-                      .map((p) => {
+                    {paginatedPreRegistrations.map((p) => {
                         const formattedDate = p.createdAt ? new Date(p.createdAt).toLocaleDateString('pt-BR', {
                           day: '2-digit',
                           month: '2-digit',
@@ -2501,16 +2558,47 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                           </tr>
                         );
                       })}
-                    {preRegistrations.length === 0 && (
+                    {filteredPreRegistrations.length === 0 && (
                       <tr>
                         <td colSpan={5} className="py-8 text-center text-xs text-slate-500 font-mono">
-                          Nenhum e-mail pré-registrado na base ainda.
+                          Nenhum e-mail pré-registrado encontrado.
                         </td>
                       </tr>
                     )}
                   </tbody>
                 </table>
               </div>
+
+              {totalPrePages > 1 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between p-4 border-t border-slate-850 bg-slate-900/10 gap-3 mt-auto">
+                  <span className="text-slate-400 text-xs text-center sm:text-left">
+                    Mostrando <strong>{(prePage - 1) * ITEMS_PER_PAGE_PRE + 1}</strong> a{' '}
+                    <strong>{Math.min(prePage * ITEMS_PER_PAGE_PRE, filteredPreRegistrations.length)}</strong> de{' '}
+                    <strong>{filteredPreRegistrations.length}</strong> pré-registros
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={prePage === 1}
+                      onClick={() => setPrePage(prev => Math.max(prev - 1, 1))}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-950 border border-slate-850 hover:bg-slate-900 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                    >
+                      Anterior
+                    </button>
+                    <span className="text-slate-300 font-mono text-xs font-semibold min-w-[50px] text-center">
+                      {prePage} / {totalPrePages}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={prePage === totalPrePages}
+                      onClick={() => setPrePage(prev => Math.min(prev + 1, totalPrePages))}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-950 border border-slate-850 hover:bg-slate-900 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                    >
+                      Próximo
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -2567,23 +2655,40 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
   );
 }
 
-function FinanceReport() {
+interface FinanceReportProps {
+  courses: Course[];
+}
+
+function FinanceReport({ courses }: FinanceReportProps) {
   const [payments, setPayments] = useState<any[]>([]);
+  const [preRegistrations, setPreRegistrations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchPayments = async () => {
+    const fetchFinanceData = async () => {
       try {
-        const querySnapshot = await getDocs(collection(db, 'payments'));
-        const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setPayments(data);
+        const [paymentsSnapshot, preSnapshot] = await Promise.all([
+          getDocs(collection(db, 'payments')),
+          getDocs(collection(db, 'preRegistrations'))
+        ]);
+        
+        const paymentsData = paymentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const preData = preSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        setPayments(paymentsData);
+        setPreRegistrations(preData);
       } catch (error) {
-        console.error("Error fetching payments:", error);
+        console.error("Error fetching finance data:", error);
+        try {
+          handleFirestoreError(error, OperationType.LIST, 'payments_and_preRegistrations');
+        } catch (e) {
+          console.error(e);
+        }
       } finally {
         setLoading(false);
       }
     };
-    fetchPayments();
+    fetchFinanceData();
   }, []);
 
   if (loading) {
@@ -2597,10 +2702,34 @@ function FinanceReport() {
 
   // Aggregate payments by courseTitle
   const aggregated: Record<string, number> = {};
+
+  // 1. Process standard payments
   payments.forEach(p => {
-    const title = p.courseTitle || 'Desconhecido';
+    let title = p.courseTitle;
+    if (!title && p.courseId) {
+      const matchedCourse = courses.find(c => c.id === p.courseId);
+      if (matchedCourse) {
+        title = matchedCourse.title;
+      }
+    }
+    if (!title) {
+      title = 'Desconhecido';
+    }
     const amount = Number(p.amount) || 0;
     aggregated[title] = (aggregated[title] || 0) + amount;
+  });
+
+  // 2. Process pre-registrations (as they have paid outside the platform for their linked courses)
+  preRegistrations.forEach(pre => {
+    const cIds = pre.courseIds || [];
+    cIds.forEach((cid: string) => {
+      const matchedCourse = courses.find(c => c.id === cid);
+      if (matchedCourse) {
+        const title = matchedCourse.title;
+        const price = Number(matchedCourse.price) || 0;
+        aggregated[title] = (aggregated[title] || 0) + price;
+      }
+    });
   });
 
   const chartData = Object.keys(aggregated).map(key => ({
