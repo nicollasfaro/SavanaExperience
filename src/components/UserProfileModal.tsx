@@ -114,26 +114,30 @@ export function UserProfileModal({ userId, isOpen, onClose, currentUserId }: Use
       {/* Modal Card */}
       <div className="relative w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl z-10 max-h-[90vh] flex flex-col animate-scale-up">
         
-        {/* Cover Header */}
-        <div className="h-28 bg-gradient-to-r from-emerald-600/30 via-slate-850 to-indigo-600/20 relative">
-          <button 
-            onClick={onClose}
-            className="absolute top-4 right-4 p-2 bg-slate-950/80 relative-z-20 text-slate-400 hover:text-slate-100 rounded-full border border-slate-800/85 transition"
-            id="close-profile-modal"
-          >
-            <X size={16} />
-          </button>
-          
-          <div className="absolute top-4 left-6 flex items-center gap-1.5 bg-slate-950/60 px-3 py-1 rounded-full border border-slate-800">
-            <Sparkles className="text-emerald-400" size={13} />
-            <span className="text-[10px] font-mono text-slate-300 font-bold uppercase tracking-wider">
-              Perfil Savana Social
-            </span>
-          </div>
-        </div>
+        {/* Fixed Close Button */}
+        <button 
+          onClick={onClose}
+          className="absolute top-4 right-4 p-2 bg-slate-950/80 z-20 text-slate-400 hover:text-slate-100 rounded-full border border-slate-800/85 transition cursor-pointer"
+          id="close-profile-modal"
+        >
+          <X size={16} />
+        </button>
 
-        {/* Content Body (Scrollable) */}
-        <div className="flex-1 overflow-y-auto px-6 pb-6">
+        {/* Scrollable Container */}
+        <div className="flex-1 overflow-y-auto">
+          
+          {/* Cover Header */}
+          <div className="h-28 bg-gradient-to-r from-emerald-600/30 via-slate-850 to-indigo-600/20 relative">
+            <div className="absolute top-4 left-6 flex items-center gap-1.5 bg-slate-950/60 px-3 py-1 rounded-full border border-slate-800">
+              <Sparkles className="text-emerald-400" size={13} />
+              <span className="text-[10px] font-mono text-slate-300 font-bold uppercase tracking-wider">
+                Perfil Savana Social
+              </span>
+            </div>
+          </div>
+
+          {/* Content Body */}
+          <div className="px-6 pb-6">
           
           {/* Cover Avatar Row */}
           <div className="flex flex-col sm:flex-row items-center sm:items-end gap-4 -mt-10 mb-6 pb-6 border-b border-slate-800/60 relative">
@@ -313,8 +317,13 @@ export function UserProfileModal({ userId, isOpen, onClose, currentUserId }: Use
 
           </div>
 
+          {/* Closes Content Body */}
+          </div>
+
+        {/* Closes Scrollable Container */}
         </div>
 
+      {/* Closes Modal Card */}
       </div>
     </div>
   );
