@@ -95,10 +95,24 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
   const [lesFileUrl, setLesFileUrl] = useState('https://example.com/material.pdf');
   const [lesFileName, setLesFileName] = useState('Material de Apoio.pdf');
   const [lesFileType, setLesFileType] = useState('pdf');
+  const [lesComingSoon, setLesComingSoon] = useState(false);
 
   // Auto Cloud functions simulation feedback
   const [cloudMessage, setCloudMessage] = useState<string | null>(null);
   const [cloudLoading, setCloudLoading] = useState(false);
+
+  // Student list & actions states (moved up to satisfy Rules of Hooks)
+  const [studentToRemove, setStudentToRemove] = useState<LeaderboardUser | null>(null);
+  const [showAddStudentModal, setShowAddStudentModal] = useState(false);
+  const [studentSearchTerm, setStudentSearchTerm] = useState('');
+  const [selectedStudentIdsToAdd, setSelectedStudentIdsToAdd] = useState<string[]>([]);
+
+  // Microsoft Teams & Calendar scheduling states (moved up to satisfy Rules of Hooks)
+  const [liveDate, setLiveDate] = useState('');
+  const [liveDescription, setLiveDescription] = useState('Aula Síncrona Interativa oficial via Microsoft Teams. Venha preparado(a) para discutir diagnósticos e casos complexos.');
+  const [isMeetScheduling, setIsMeetScheduling] = useState(false);
+  const [meetError, setMeetError] = useState<string | null>(null);
+  const [meetSuccess, setMeetSuccess] = useState<string | null>(null);
 
   // Return empty state if teacher has no allocated Turmas
   if (allowedTurmas.length === 0) {
@@ -141,8 +155,6 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
     activeStudentsPage * ITEMS_PER_PAGE_ACTIVE_STUDENTS
   );
 
-  const [studentToRemove, setStudentToRemove] = useState<LeaderboardUser | null>(null);
-
   const handleRemoveStudentConfirm = async () => {
     if (!selectedTurma || !studentToRemove) return;
     
@@ -154,10 +166,6 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
     setStudentToRemove(null);
   };
 
-  const [showAddStudentModal, setShowAddStudentModal] = useState(false);
-  const [studentSearchTerm, setStudentSearchTerm] = useState('');
-  const [selectedStudentIdsToAdd, setSelectedStudentIdsToAdd] = useState<string[]>([]);
-  
   const handleAddStudent = async () => {
     if (!selectedTurma) return;
     setShowAddStudentModal(true);
@@ -322,6 +330,7 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
     setLesFileUrl('https://example.com/material.pdf');
     setLesFileName('Material de Apoio.pdf');
     setLesFileType('pdf');
+    setLesComingSoon(false);
     setLesQuizQuestions([
       {
         id: `q-${Date.now()}-1`,
@@ -350,6 +359,7 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
     setLesFileUrl(lesson.fileUrl || 'https://example.com/material.pdf');
     setLesFileName(lesson.fileName || 'Material de Apoio.pdf');
     setLesFileType(lesson.fileType || 'pdf');
+    setLesComingSoon(!!lesson.comingSoon);
     setLesQuizQuestions(lesson.quiz?.questions && lesson.quiz.questions.length > 0 ? lesson.quiz.questions : [
       {
         id: `q-${Date.now()}-1`,
@@ -395,11 +405,12 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
         ...editingLesson,
         title: lesTitle,
         description: lesDesc,
-        duration: lesDuration,
+        duration: lesComingSoon ? 'Disponível em breve' : lesDuration,
         type: lesType,
-        videoUrl: lesType === 'video' ? lesVideoUrl : undefined,
+        comingSoon: lesComingSoon,
+        videoUrl: (lesType === 'video' && !lesComingSoon) ? lesVideoUrl : undefined,
         articleContent: lesType === 'article' ? lesArticleContent : undefined,
-        fileUrl: lesType === 'file' ? lesFileUrl : undefined,
+        fileUrl: (lesType === 'file' && !lesComingSoon) ? lesFileUrl : undefined,
         fileName: lesType === 'file' ? lesFileName : undefined,
         fileType: lesType === 'file' ? lesFileType : undefined,
         quiz: lesType === 'quiz' ? {
@@ -423,11 +434,12 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
         title: lesTitle,
         description: lesDesc,
         order: updatedLessons.length + 1,
-        duration: lesDuration,
+        duration: lesComingSoon ? 'Disponível em breve' : lesDuration,
         type: lesType,
-        videoUrl: lesType === 'video' ? lesVideoUrl : undefined,
+        comingSoon: lesComingSoon,
+        videoUrl: (lesType === 'video' && !lesComingSoon) ? lesVideoUrl : undefined,
         articleContent: lesType === 'article' ? lesArticleContent : undefined,
-        fileUrl: lesType === 'file' ? lesFileUrl : undefined,
+        fileUrl: (lesType === 'file' && !lesComingSoon) ? lesFileUrl : undefined,
         fileName: lesType === 'file' ? lesFileName : undefined,
         fileType: lesType === 'file' ? lesFileType : undefined,
         quiz: lesType === 'quiz' ? {
@@ -509,13 +521,6 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
       }
     }, 1200);
   };
-
-  // Microsoft Teams & Calendar scheduling states
-  const [liveDate, setLiveDate] = useState('');
-  const [liveDescription, setLiveDescription] = useState('Aula Síncrona Interativa oficial via Microsoft Teams. Venha preparado(a) para discutir diagnósticos e casos complexos.');
-  const [isMeetScheduling, setIsMeetScheduling] = useState(false);
-  const [meetError, setMeetError] = useState<string | null>(null);
-  const [meetSuccess, setMeetSuccess] = useState<string | null>(null);
 
   const handleScheduleGoogleMeet = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1519,15 +1524,34 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
                 </div>
               </div>
 
+              {/* OPTION: RECORDER CLASS WILL BE AVAILABLE SOON */}
+              {(lesType === 'video' || lesType === 'file') && (
+                <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-850">
+                  <label className="flex items-center gap-2.5 cursor-pointer font-sans select-none">
+                    <input
+                      type="checkbox"
+                      id="input-lesson-coming-soon"
+                      checked={lesComingSoon}
+                      onChange={(e) => setLesComingSoon(e.target.checked)}
+                      className="w-4 h-4 text-emerald-500 rounded bg-slate-900 border-slate-800 focus:ring-emerald-500 cursor-pointer"
+                    />
+                    <div className="text-left">
+                      <span className="text-xs font-bold text-slate-200 block">Aula gravada será disponibilizada em breve</span>
+                      <span className="text-[10px] text-slate-400 block leading-tight">Sinaliza aos alunos que a gravação/material desta aula estará disponível em instantes.</span>
+                    </div>
+                  </label>
+                </div>
+              )}
+
               {/* CONDITIONAL SUB forms BASED ON TYPE */}
-              {lesType === 'file' && (
+              {lesType === 'file' && !lesComingSoon && (
                 <div className="bg-slate-950/40 border border-slate-850 p-4 rounded-xl space-y-3 animate-fade-in text-left">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-[10px] uppercase tracking-wider font-mono text-emerald-400 mb-1">Nome do Arquivo</label>
                       <input
                         type="text"
-                        required={lesType === 'file'}
+                        required={lesType === 'file' && !lesComingSoon}
                         value={lesFileName}
                         onChange={(e) => setLesFileName(e.target.value)}
                         placeholder="Ex: Apostila_Completa.pdf"
@@ -1554,7 +1578,7 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
                     <label className="block text-[10px] uppercase tracking-wider font-mono text-emerald-400 mb-1">Material Anexo (Upload)</label>
                     <input
                       type="file"
-                      required={lesType === 'file' && !lesFileUrl}
+                      required={lesType === 'file' && !lesFileUrl && !lesComingSoon}
                       onChange={(e) => {
                         const file = e.target.files?.[0];
                         if (file) {
@@ -1588,13 +1612,13 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
                 </div>
               )}
 
-              {lesType === 'video' && (
+              {lesType === 'video' && !lesComingSoon && (
                 <div className="bg-slate-950/40 border border-slate-850 p-4 rounded-xl space-y-3 animate-fade-in">
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider font-mono text-emerald-400 mb-1">URL do Vídeo (.mp4 ou YouTube)</label>
                     <input
                       type="text"
-                      required={lesType === 'video'}
+                      required={lesType === 'video' && !lesComingSoon}
                       value={lesVideoUrl}
                       onChange={(e) => setLesVideoUrl(e.target.value)}
                       placeholder="Ex: https://vjs.zencdn.net/v/oceans.mp4"

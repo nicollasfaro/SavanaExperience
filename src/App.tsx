@@ -22,7 +22,7 @@ import { CertificateModal } from './components/CertificateModal';
 import { CertificateValidator } from './components/CertificateValidator';
 import { 
   Trophy, BookOpen, Sun, Moon, Sparkles, MessageSquare, Play, CheckCircle2, 
-  HelpCircle, CreditCard, ChevronRight, Download, Calendar, ShieldCheck, 
+  HelpCircle, CreditCard, ChevronRight, Download, Calendar, ShieldCheck, Clock, 
   Settings, Award, Wifi, WifiOff, Fingerprint, Lock, CheckSquare, Bell, Shield, Gift, Menu, X,
   Video
 } from 'lucide-react';
@@ -2004,7 +2004,24 @@ export default function App() {
 
                     {/* RENDER CONTENT BY LESSON TYPE */}
 
-                    {selectedLesson.type === 'video' && selectedLesson.videoUrl && (
+                    {selectedLesson.comingSoon ? (
+                      <div className="space-y-4">
+                        <div className="bg-slate-950/50 border border-slate-800/80 p-8 rounded-3xl flex flex-col items-center justify-center text-center animate-fade-in py-12">
+                          <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mb-4 border border-amber-500/20 animate-pulse">
+                            <Clock size={28} className="text-amber-400" />
+                          </div>
+                          <h4 className="text-base font-bold text-slate-200 mb-2">Aula Gravada em Processamento 🎥</h4>
+                          <p className="text-xs text-slate-400 max-w-md leading-relaxed">
+                            Esta aula gravada ou material de apoio será disponibilizada em breve pelo professor. Fique atento(a), pois o conteúdo estará liberado nos próximos instantes para você assistir ou baixar!
+                          </p>
+                          <div className="mt-6 px-4 py-2 bg-slate-900 border border-slate-800 rounded-2xl text-[10px] text-slate-450 font-mono">
+                            💡 Você pode continuar estudando outros módulos enquanto este conteúdo é finalizado.
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {selectedLesson.type === 'video' && selectedLesson.videoUrl && (
                       <div className="space-y-4">
                         {/* Video Frame */}
                         <div className="aspect-video bg-black rounded-2xl overflow-hidden relative shadow-inner border border-slate-805">
@@ -2179,6 +2196,8 @@ export default function App() {
                         </button>
                       </div>
                     )}
+                  </>
+                )}
 
                   </div>
                 ) : (
@@ -2600,7 +2619,13 @@ export default function App() {
                                     )}
                                     {less.title}
                                   </span>
-                                  <span className="text-[9px] font-mono text-slate-500 shrink-0">{less.duration}</span>
+                                  <span className="text-[9px] font-mono text-slate-500 shrink-0">
+                                    {less.comingSoon ? (
+                                      <span className="px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400 font-semibold text-[8px] uppercase tracking-wider animate-pulse">Em Breve</span>
+                                    ) : (
+                                      less.duration
+                                    )}
+                                  </span>
                                 </button>
                               );
                             })

@@ -75,6 +75,7 @@ export interface Lesson {
   fileUrl?: string;
   fileName?: string;
   fileType?: string;
+  comingSoon?: boolean;
 }
 
 export interface Quiz {
