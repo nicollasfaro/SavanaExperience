@@ -8,7 +8,7 @@ import { localDB, uploadCourseThumbnail, auth, db, handleFirestoreError, Operati
 import { 
   Shield, User, UserCheck, UserX, Search, Mail, Award, Sparkles, Filter,
   Plus, Edit, Trash2, Calendar, BookOpen, Layers, Users, Upload, Image, Loader2,
-  Database, RefreshCw, CheckCircle2, AlertCircle, AlertTriangle, X, FileText, UserPlus, Send, Save
+  Database, RefreshCw, CheckCircle2, AlertCircle, AlertTriangle, X, FileText, UserPlus, Send, Save, Download
 } from 'lucide-react';
 import { CertificateSettingsPanel } from './CertificateSettingsPanel';
 
@@ -29,6 +29,16 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [usersPage, setUsersPage] = useState(1);
   const ITEMS_PER_PAGE_USERS = 10;
+
+  // Student profile/registration editing states
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [editingUser, setEditingUser] = useState<LeaderboardUser | null>(null);
+  const [editUserName, setEditUserName] = useState('');
+  const [editUserEmail, setEditUserEmail] = useState('');
+  const [editUserXp, setEditUserXp] = useState(0);
+  const [editUserLevel, setEditUserLevel] = useState(1);
+  const [editUserAvatar, setEditUserAvatar] = useState('');
+  const [isSavingUser, setIsSavingUser] = useState(false);
 
   // 2. Turmas management states
   const [turmas, setTurmas] = useState<Turma[]>(() => localDB.getTurmas());
@@ -98,6 +108,9 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
   const [preCourseIds, setPreCourseIds] = useState<string[]>([]);
   const [preSearchTerm, setPreSearchTerm] = useState('');
   const [isSavingPre, setIsSavingPre] = useState(false);
+  const [newlyPreRegisteredUser, setNewlyPreRegisteredUser] = useState<PreRegistration | null>(null);
+  const [showSendEmailPrompt, setShowSendEmailPrompt] = useState(false);
+  const [isSendingPromptEmail, setIsSendingPromptEmail] = useState(false);
   const [emailTemplate, setEmailTemplate] = useState(() => localDB.getEmailTemplate());
   const [isSendingEmails, setIsSendingEmails] = useState(false);
   const [lastDispatchLog, setLastDispatchLog] = useState<{ email: string; dispatchedAt: string; status: string }[] | null>(null);
@@ -227,6 +240,33 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
       showToast("Não foi possível atualizar o cargo do usuário.", "error");
     } finally {
       setUpdatingUserId(null);
+    }
+  };
+
+  const handleSaveUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    if (!editUserName.trim()) {
+      showToast("O nome do usuário não pode ser vazio.", "error");
+      return;
+    }
+    
+    setIsSavingUser(true);
+    try {
+      await localDB.updateLeaderboardUser(editingUser.userId, {
+        name: editUserName.trim(),
+        email: editUserEmail.trim(),
+        xp: Number(editUserXp),
+        level: Number(editUserLevel),
+        avatar: editUserAvatar.trim()
+      });
+      showToast("Cadastro de usuário alterado com sucesso!");
+      setShowUserModal(false);
+      setEditingUser(null);
+    } catch (err) {
+      showToast("Erro ao alterar o cadastro do usuário.", "error");
+    } finally {
+      setIsSavingUser(false);
     }
   };
 
@@ -535,10 +575,60 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
       showToast(`E-mail ${cleanMail} pré-registrado com sucesso!`, "success");
       setPreEmail('');
       setPreCourseIds([]);
+      
+      // Set the newly registered user and trigger the prompt modal
+      setNewlyPreRegisteredUser(preData);
+      setShowSendEmailPrompt(true);
     } catch (err: any) {
       showToast("Erro ao salvar pré-registro: " + (err.message || String(err)), "error");
     } finally {
       setIsSavingPre(false);
+    }
+  };
+
+  const handleSendPromptEmail = async () => {
+    if (!newlyPreRegisteredUser) return;
+    setIsSendingPromptEmail(true);
+    try {
+      const courseTitles = (newlyPreRegisteredUser.courseIds || []).map(cid => {
+        const courseObj = adminCourses.find(ac => ac.id === cid);
+        return courseObj ? courseObj.title : cid;
+      });
+
+      const response = await fetch('/api/pre-register/send-emails', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          pendingUsers: [{
+            email: newlyPreRegisteredUser.email,
+            courseTitles
+          }],
+          customTemplate: emailTemplate
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Erro ao disparar e-mail no servidor');
+      }
+
+      // Read latest from localDB state to ensure emailSentCount updates correctly
+      const currentLatest = localDB.getPreRegistrations().find(p => p.id === newlyPreRegisteredUser.id) || newlyPreRegisteredUser;
+      const updatedUser: PreRegistration = {
+        ...currentLatest,
+        emailSentCount: (currentLatest.emailSentCount || 0) + 1,
+        lastEmailSentAt: new Date().toISOString()
+      };
+      await localDB.savePreRegistration(updatedUser);
+
+      showToast(`E-mail enviado com sucesso para ${newlyPreRegisteredUser.email}!`, "success");
+      setShowSendEmailPrompt(false);
+      setNewlyPreRegisteredUser(null);
+    } catch (err: any) {
+      showToast("Erro ao disparar e-mail: " + (err.message || String(err)), "error");
+    } finally {
+      setIsSendingPromptEmail(false);
     }
   };
 
@@ -557,6 +647,51 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
         }
       }
     );
+  };
+
+  const handleExportPreRegistrationsCSV = () => {
+    try {
+      if (filteredPreRegistrations.length === 0) {
+        showToast("Não há pré-registros para exportar.", "info");
+        return;
+      }
+
+      const headers = ['Email', 'Cursos Permitidos', 'Data de Criacao', 'Status', 'Envios de Email', 'Ultimo Envio'];
+      const rows = filteredPreRegistrations.map(p => {
+        const email = p.email;
+        const allowedCourses = (p.courseIds || []).map(cid => {
+          const courseObj = adminCourses.find(ac => ac.id === cid);
+          return courseObj ? courseObj.title : cid;
+        }).join('; ');
+        
+        const createdAtDate = p.createdAt ? new Date(p.createdAt).toLocaleDateString('pt-BR') : '';
+        const status = p.used ? 'Ativo' : 'Pendente';
+        const emailSentCount = p.emailSentCount || 0;
+        const lastSentDate = p.lastEmailSentAt ? new Date(p.lastEmailSentAt).toLocaleDateString('pt-BR') : '';
+
+        return [
+          `"${email.replace(/"/g, '""')}"`,
+          `"${allowedCourses.replace(/"/g, '""')}"`,
+          `"${createdAtDate}"`,
+          `"${status}"`,
+          `"${emailSentCount}"`,
+          `"${lastSentDate}"`
+        ];
+      });
+
+      const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `matriculas_pre_aprovadas_export_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast("Relatório CSV de pré-matrículas exportado com sucesso!");
+    } catch (err: any) {
+      showToast("Erro ao exportar CSV: " + (err.message || String(err)), "error");
+    }
   };
 
   const handleSendEmailsToPending = async () => {
@@ -1177,6 +1312,23 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                                 {updatingUserId === user.userId ? '...' : 'Tornar Admin'}
                               </button>
                             )}
+                            <button
+                              id={`edit-user-${user.userId}`}
+                              disabled={updatingUserId === user.userId}
+                              onClick={() => {
+                                setEditingUser(user);
+                                setEditUserName(user.name);
+                                setEditUserEmail(user.email || '');
+                                setEditUserXp(user.xp);
+                                setEditUserLevel(user.level);
+                                setEditUserAvatar(user.avatar || '');
+                                setShowUserModal(true);
+                              }}
+                              className="p-1.5 bg-slate-900 border border-slate-850 text-slate-400 hover:text-blue-400 hover:border-blue-500/30 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
+                              title="Editar Cadastro de Aluno"
+                            >
+                              <Edit size={16} />
+                            </button>
                             <button
                               id={`delete-user-${user.userId}`}
                               disabled={updatingUserId === user.userId || user.email === 'ciuldinciuldin@gmail.com'}
@@ -2440,20 +2592,31 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                   <p className="text-[10px] text-slate-500">Histórico de e-mails aguardando ou que já realizaram cadastro.</p>
                 </div>
 
-                <div className="relative w-full sm:w-60">
-                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500">
-                    <Search size={14} />
-                  </span>
-                  <input
-                    type="text"
-                    value={preSearchTerm}
-                    onChange={(e) => {
-                      setPreSearchTerm(e.target.value);
-                      setPrePage(1);
-                    }}
-                    placeholder="Filtrar por e-mail..."
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-1.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500 transition"
-                  />
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+                  <div className="relative flex-1 sm:w-56">
+                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500">
+                      <Search size={14} />
+                    </span>
+                    <input
+                      type="text"
+                      value={preSearchTerm}
+                      onChange={(e) => {
+                        setPreSearchTerm(e.target.value);
+                        setPrePage(1);
+                      }}
+                      placeholder="Filtrar por e-mail..."
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-1.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500 transition"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleExportPreRegistrationsCSV}
+                    className="flex items-center justify-center gap-1 px-3 py-1.5 bg-slate-950 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-slate-100 rounded-xl text-xs font-semibold transition shrink-0 cursor-pointer"
+                    title="Exportar Pré-Matrículas em formato CSV"
+                  >
+                    <Download size={13} />
+                    <span>Exportar CSV</span>
+                  </button>
                 </div>
               </div>
 
@@ -2647,6 +2810,280 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                 {confirmConfig.confirmText}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Alteração de Cadastro do Aluno */}
+      {showUserModal && editingUser && (
+        <div id="admin-user-edit-modal" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm animate-fade-in animate-duration-200">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col">
+            
+            {/* Header */}
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
+              <div className="flex items-center gap-2 text-blue-450">
+                <Edit size={20} className="text-blue-500" />
+                <h3 className="font-display font-bold text-slate-100 text-base">Alterar Cadastro do Aluno</h3>
+              </div>
+              <button 
+                type="button"
+                onClick={() => {
+                  setShowUserModal(false);
+                  setEditingUser(null);
+                }}
+                className="p-1 hover:bg-slate-800 rounded-full text-slate-400 transition cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleSaveUser} className="flex flex-col flex-1">
+              <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+                
+                {/* Profile Avatar Selection & Preview */}
+                <div className="flex flex-col sm:flex-row items-center gap-4 bg-slate-950/40 p-4 rounded-xl border border-slate-850">
+                  <div className="relative group shrink-0">
+                    <img 
+                      src={editUserAvatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'} 
+                      alt="Avatar Preview" 
+                      className="w-16 h-16 rounded-full object-cover border-2 border-slate-700 bg-slate-900"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                  
+                  <div className="flex-1 w-full space-y-2">
+                    <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold">Avatar (URL da Imagem)</label>
+                    <input
+                      type="text"
+                      value={editUserAvatar}
+                      onChange={(e) => setEditUserAvatar(e.target.value)}
+                      placeholder="https://exemplo.com/avatar.jpg"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500 font-mono"
+                    />
+                    
+                    {/* Presets Grid */}
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <span className="text-[9px] text-slate-500 font-mono self-center">Presets:</span>
+                      {[
+                        'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+                        'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+                        'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150&auto=format&fit=crop&q=80',
+                        'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&auto=format&fit=crop&q=80',
+                        'https://images.unsplash.com/photo-1628157582853-a796fa650a6a?w=150&auto=format&fit=crop&q=80'
+                      ].map((preset, index) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setEditUserAvatar(preset)}
+                          className={`w-7 h-7 rounded-full overflow-hidden border transition-all ${
+                            editUserAvatar === preset ? 'border-emerald-500 scale-105' : 'border-slate-800 hover:border-slate-500'
+                          }`}
+                        >
+                          <img src={preset} alt={`Preset ${index}`} className="w-full h-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Name */}
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold">Nome Completo</label>
+                  <input
+                    type="text"
+                    required
+                    value={editUserName}
+                    onChange={(e) => setEditUserName(e.target.value)}
+                    placeholder="Nome do aluno"
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500/60 transition px-3.5 py-2.5 rounded-xl text-xs text-slate-200 focus:outline-none"
+                  />
+                </div>
+
+                {/* Email */}
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold">E-mail de Contato</label>
+                  <input
+                    type="email"
+                    required
+                    value={editUserEmail}
+                    onChange={(e) => setEditUserEmail(e.target.value)}
+                    placeholder="aluno@exemplo.com"
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500/60 transition px-3.5 py-2.5 rounded-xl text-xs text-slate-200 focus:outline-none font-mono"
+                  />
+                </div>
+
+                {/* XP and Level Group */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center">
+                      <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold">XP Acumulado</label>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          const autoLevel = Math.floor(Number(editUserXp) / 1000) + 1;
+                          setEditUserLevel(autoLevel > 0 ? autoLevel : 1);
+                        }}
+                        className="text-[8px] font-mono uppercase text-blue-450 hover:text-blue-350"
+                        title="Recalcular Nível automaticamente baseado no XP atual (1 Nível a cada 1000 XP)"
+                      >
+                        Auto Nível
+                      </button>
+                    </div>
+                    <input
+                      type="number"
+                      required
+                      min={0}
+                      value={editUserXp}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setEditUserXp(val);
+                        const autoLevel = Math.floor(val / 1000) + 1;
+                        setEditUserLevel(autoLevel > 0 ? autoLevel : 1);
+                      }}
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500/60 transition px-3.5 py-2.5 rounded-xl text-xs text-slate-200 focus:outline-none font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold">Nível do Aluno</label>
+                    <input
+                      type="number"
+                      required
+                      min={1}
+                      value={editUserLevel}
+                      onChange={(e) => setEditUserLevel(Number(e.target.value))}
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500/60 transition px-3.5 py-2.5 rounded-xl text-xs text-slate-200 focus:outline-none font-mono"
+                    />
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Actions Footer */}
+              <div className="p-4 border-t border-slate-800 flex items-center justify-end gap-3 bg-slate-950/50">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowUserModal(false);
+                    setEditingUser(null);
+                  }}
+                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-850 hover:bg-slate-800 text-slate-355 transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingUser}
+                  className="px-4 py-2 text-xs font-bold rounded-xl bg-blue-500 hover:bg-blue-450 text-slate-950 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-55 disabled:cursor-not-allowed"
+                >
+                  {isSavingUser ? (
+                    <>
+                      <Loader2 className="animate-spin w-3.5 h-3.5" />
+                      <span>Salvando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save size={13} />
+                      <span>Salvar Alterações</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de confirmação de envio de e-mail após pré-registro */}
+      {showSendEmailPrompt && newlyPreRegisteredUser && (
+        <div id="admin-send-email-prompt-modal" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm animate-fade-in animate-duration-200">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col">
+            
+            {/* Header */}
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
+              <div className="flex items-center gap-2 text-emerald-450">
+                <Mail size={20} className="text-emerald-500" />
+                <h3 className="font-display font-bold text-slate-100 text-base">Enviar E-mail de Acesso?</h3>
+              </div>
+              <button 
+                type="button"
+                onClick={() => {
+                  setShowSendEmailPrompt(false);
+                  setNewlyPreRegisteredUser(null);
+                }}
+                className="p-1 hover:bg-slate-800 rounded-full text-slate-400 transition cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-4">
+              <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto">
+                <Send size={22} className="text-emerald-400" />
+              </div>
+              
+              <div className="text-center space-y-2">
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  O pré-registro de <strong className="text-slate-150 font-mono">{newlyPreRegisteredUser.email}</strong> foi concluído com sucesso!
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  Deseja enviar o e-mail de convite com as instruções de acesso agora?
+                </p>
+              </div>
+
+              {/* Courses list preview */}
+              <div className="bg-slate-950/40 border border-slate-850 p-3.5 rounded-xl space-y-1.5">
+                <span className="block text-[10px] font-mono uppercase tracking-wider text-slate-500 font-bold">Cursos Concedidos:</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {(newlyPreRegisteredUser.courseIds || []).map(cid => {
+                    const courseObj = adminCourses.find(ac => ac.id === cid);
+                    const title = courseObj ? courseObj.title : cid;
+                    return (
+                      <span key={cid} className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-semibold">
+                        {title}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="p-4 border-t border-slate-800 flex items-center justify-end gap-3 bg-slate-950/50">
+              <button
+                type="button"
+                disabled={isSendingPromptEmail}
+                onClick={() => {
+                  setShowSendEmailPrompt(false);
+                  setNewlyPreRegisteredUser(null);
+                }}
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-850 hover:bg-slate-800 text-slate-350 transition cursor-pointer disabled:opacity-50"
+              >
+                Não, enviar depois
+              </button>
+              <button
+                type="button"
+                disabled={isSendingPromptEmail}
+                onClick={handleSendPromptEmail}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-emerald-500 hover:bg-emerald-450 text-slate-950 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-55 disabled:cursor-not-allowed"
+              >
+                {isSendingPromptEmail ? (
+                  <>
+                    <Loader2 className="animate-spin w-3.5 h-3.5" />
+                    <span>Enviando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send size={13} />
+                    <span>Sim, enviar agora</span>
+                  </>
+                )}
+              </button>
+            </div>
+
           </div>
         </div>
       )}

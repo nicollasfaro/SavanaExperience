@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Course, CourseModule, LeaderboardUser, Turma, Lesson, QuizQuestion } from '../types';
 import { localDB, getCachedAccessToken, signInWithGmail } from '../firebase';
-import { BookOpen, Users, Award, TrendingUp, Plus, Edit, Trash2, CloudLightning, Calendar, Download, AlertCircle, Video, Key, Loader2, CheckCircle, ExternalLink, X } from 'lucide-react';
+import { BookOpen, Users, Award, TrendingUp, Plus, Edit, Trash2, CloudLightning, Calendar, Download, AlertCircle, Video, Key, Loader2, CheckCircle, ExternalLink, X, Search } from 'lucide-react';
 
 interface InstructorPanelProps {
   currentUserId: string;
@@ -46,6 +46,11 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
   const allowedTurmas = turmas.filter(t => t.instructorId === currentUserId);
   const [selectedTurmaId, setSelectedTurmaId] = useState<string>('');
 
+  // Active student list filtering and pagination
+  const [activeStudentsSearch, setActiveStudentsSearch] = useState('');
+  const [activeStudentsPage, setActiveStudentsPage] = useState(1);
+  const ITEMS_PER_PAGE_ACTIVE_STUDENTS = 10;
+
   // Sync selectedTurmaId when allowed changes
   useEffect(() => {
     if (allowedTurmas.length > 0) {
@@ -56,6 +61,12 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
       setSelectedTurmaId('');
     }
   }, [allowedTurmas, selectedTurmaId]);
+
+  // Reset page when turma changes
+  useEffect(() => {
+    setActiveStudentsPage(1);
+    setActiveStudentsSearch('');
+  }, [selectedTurmaId]);
 
   // Course addition states
   const [showAddModule, setShowAddModule] = useState(false);
@@ -117,6 +128,18 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
   const totalEnrolled = classStudents.length;
   const avgXP = Math.round(classStudents.reduce((acc, s) => acc + s.xp, 0) / (classStudents.length || 1));
   const classGrade = (classStudents.reduce((acc, s) => acc + (s.level * 14.5), 0) / (classStudents.length || 1)).toFixed(1);
+
+  // Filter active students by search term (name or email)
+  const filteredActiveStudents = classStudents.filter(s => {
+    const term = activeStudentsSearch.toLowerCase();
+    return s.name.toLowerCase().includes(term) || (s.email && s.email.toLowerCase().includes(term));
+  });
+
+  const totalActiveStudentsPages = Math.ceil(filteredActiveStudents.length / ITEMS_PER_PAGE_ACTIVE_STUDENTS);
+  const paginatedActiveStudents = filteredActiveStudents.slice(
+    (activeStudentsPage - 1) * ITEMS_PER_PAGE_ACTIVE_STUDENTS,
+    activeStudentsPage * ITEMS_PER_PAGE_ACTIVE_STUDENTS
+  );
 
   const [studentToRemove, setStudentToRemove] = useState<LeaderboardUser | null>(null);
 
@@ -749,23 +772,58 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
 
           {/* DETAILED STUDENTS LIST TABLE */}
           <div className="bg-slate-950/40 border border-slate-800 rounded-2xl overflow-hidden shadow-md">
-            <div className="px-5 py-4 border-b border-slate-800 bg-slate-950/80 flex items-center justify-between">
-              <h4 className="text-xs uppercase tracking-wider text-slate-300 font-semibold">Lista de Alunos Ativos</h4>
-              <div className="flex items-center gap-2">
-                <button 
-                  onClick={handleAddStudent}
-                  className="flex items-center gap-1 px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded text-[10px] font-semibold transition"
-                >
-                  <Users size={11} />
-                  Adicionar Estudante
-                </button>
-                <button 
-                  onClick={() => alert('Lista exportada com sucesso (formato CSV)!')}
-                  className="flex items-center gap-1 px-2.5 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded text-[10px] text-slate-300 transition"
-                >
-                  <Download size={11} />
-                  Exportar CSV
-                </button>
+            <div className="px-5 py-4 border-b border-slate-800 bg-slate-950/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <h4 className="text-xs uppercase tracking-wider text-slate-300 font-semibold shrink-0">Lista de Alunos Ativos</h4>
+              
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto">
+                <div className="relative flex-1 sm:w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
+                  <input
+                    type="text"
+                    placeholder="Filtrar por nome ou e-mail..."
+                    value={activeStudentsSearch}
+                    onChange={(e) => {
+                      setActiveStudentsSearch(e.target.value);
+                      setActiveStudentsPage(1);
+                    }}
+                    className="w-full bg-slate-900/90 border border-slate-850 rounded-xl pl-9 pr-4 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button 
+                    onClick={handleAddStudent}
+                    className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-xl text-[10px] font-semibold transition"
+                  >
+                    <Users size={11} />
+                    Adicionar Estudante
+                  </button>
+                  <button 
+                    onClick={() => {
+                      const headers = ['Nome', 'Email', 'XP', 'Nivel', 'Medalhas'];
+                      const rows = filteredActiveStudents.map(s => [
+                        s.name,
+                        s.email || '',
+                        s.xp,
+                        s.level,
+                        s.badges.length
+                      ]);
+                      const csvContent = "data:text/csv;charset=utf-8," 
+                        + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+                      const encodedUri = encodeURI(csvContent);
+                      const link = document.createElement("a");
+                      link.setAttribute("href", encodedUri);
+                      link.setAttribute("download", `alunos_ativos_turma_${selectedTurmaId || 'export'}.csv`);
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-[10px] text-slate-300 transition"
+                  >
+                    <Download size={11} />
+                    Exportar CSV
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -774,6 +832,7 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
                 <thead>
                   <tr className="border-b border-slate-800/80 bg-slate-955 text-slate-400 font-medium">
                     <th className="p-4">Estudante</th>
+                    <th className="p-4">E-mail</th>
                     <th className="p-4">Pontuação Total</th>
                     <th className="p-4">Nível Atual</th>
                     <th className="p-4">Selos Virtuais</th>
@@ -782,11 +841,14 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-850">
-                  {classStudents.map((student) => (
+                  {paginatedActiveStudents.map((student) => (
                     <tr key={student.userId} className="hover:bg-slate-900/45 transition">
                       <td className="p-4 flex items-center gap-2.5">
                         <img src={student.avatar} alt="" referrerPolicy="no-referrer" className="w-7 h-7 rounded-full object-cover" />
                         <span className="font-semibold text-slate-200">{student.name}</span>
+                      </td>
+                      <td className="p-4 text-slate-400 font-mono text-[11px] max-w-[180px] truncate" title={student.email}>
+                        {student.email || <span className="text-slate-600 italic">Sem e-mail</span>}
                       </td>
                       <td className="p-4 font-mono font-medium text-emerald-400">{student.xp} XP</td>
                       <td className="p-4"><span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">Level {student.level}</span></td>
@@ -815,9 +877,47 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
                       </td>
                     </tr>
                   ))}
+                  {filteredActiveStudents.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-xs text-slate-500 font-mono">
+                        Nenhum aluno ativo encontrado.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
+
+            {totalActiveStudentsPages > 1 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between p-4 border-t border-slate-800 bg-slate-950/45 gap-3">
+                <span className="text-slate-400 text-xs text-center sm:text-left">
+                  Mostrando <strong>{(activeStudentsPage - 1) * ITEMS_PER_PAGE_ACTIVE_STUDENTS + 1}</strong> a{' '}
+                  <strong>{Math.min(activeStudentsPage * ITEMS_PER_PAGE_ACTIVE_STUDENTS, filteredActiveStudents.length)}</strong> de{' '}
+                  <strong>{filteredActiveStudents.length}</strong> alunos ativos
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={activeStudentsPage === 1}
+                    onClick={() => setActiveStudentsPage(prev => Math.max(prev - 1, 1))}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-950 border border-slate-800 hover:bg-slate-900 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  >
+                    Anterior
+                  </button>
+                  <span className="text-slate-300 font-mono text-xs font-semibold min-w-[50px] text-center">
+                    {activeStudentsPage} / {totalActiveStudentsPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={activeStudentsPage === totalActiveStudentsPages}
+                    onClick={() => setActiveStudentsPage(prev => Math.min(prev + 1, totalActiveStudentsPages))}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-950 border border-slate-800 hover:bg-slate-900 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  >
+                    Próximo
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

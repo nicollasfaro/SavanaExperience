@@ -1204,6 +1204,24 @@ Dr. Gabriel e equipe Savana Experience.`);
     }
   }
 
+  async updateLeaderboardUser(userId: string, data: Partial<LeaderboardUser>) {
+    const board = this.getLeaderboard();
+    const idx = board.findIndex(u => u.userId === userId);
+    if (idx >= 0) {
+      board[idx] = { ...board[idx], ...data };
+      this.set('leaderboard', board);
+      this.notify('leaderboard');
+
+      if (!this.isFirebaseAuthenticated) return;
+
+      try {
+        await setDoc(doc(db, 'leaderboard', userId), cleanUndefined(board[idx]));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `leaderboard_update/${userId}`);
+      }
+    }
+  }
+
   // Turmas (Classes/Cohorts)
   getTurmas(): Turma[] {
     return this.get('turmas', INITIAL_TURMAS);
@@ -1517,6 +1535,75 @@ export async function processPreRegistration(email: string | null | undefined, u
           });
         } catch (preUseErr) {
           console.warn("Failed to mark pre-registration as used in Firestore:", preUseErr);
+        }
+
+        // 4. Notify admin users about the activated pre-registration
+        try {
+          // Resolve course titles
+          const courseTitles: string[] = [];
+          if (preReg.courseIds && preReg.courseIds.length > 0) {
+            try {
+              const allCourses = localDB.getCourses();
+              for (const cid of preReg.courseIds) {
+                const match = allCourses.find(c => c.id === cid);
+                if (match) {
+                  courseTitles.push(match.title);
+                } else {
+                  courseTitles.push(cid);
+                }
+              }
+            } catch (courseErr) {
+              console.warn("Failed to map course titles for notification:", courseErr);
+              courseTitles.push(...preReg.courseIds);
+            }
+          }
+
+          // Gather admin user IDs
+          const adminUserIds = new Set<string>();
+
+          // Admin from leaderboard
+          try {
+            const board = localDB.getLeaderboard();
+            board.forEach(u => {
+              if (u.email === 'ciuldinciuldin@gmail.com' || u.role === 'instructor') {
+                adminUserIds.add(u.userId);
+              }
+            });
+          } catch (boardErr) {
+            console.warn("Failed to read leaderboard for admin IDs:", boardErr);
+          }
+
+          // Admins from Firestore collection
+          if (db) {
+            try {
+              const adminsSnap = await getDocs(collection(db, 'admins'));
+              adminsSnap.forEach(aDoc => {
+                adminUserIds.add(aDoc.id);
+              });
+            } catch (dbErr) {
+              console.warn("Failed to fetch admin collection for notification:", dbErr);
+            }
+          }
+
+          // Send notification to each found admin
+          for (const adminId of adminUserIds) {
+            const notif: NotificationItem = {
+              id: `pre-activated-${docId}-${adminId}-${Date.now()}`,
+              userId: adminId,
+              title: 'Matrícula Pré-Aprovada Ativada! 🎓',
+              message: `O aluno ${preReg.email} concluiu seu cadastro e ativou a pré-matrícula nos cursos: ${courseTitles.join(', ')}.`,
+              type: 'course',
+              read: false,
+              createdAt: new Date().toISOString()
+            };
+            try {
+              await localDB.saveNotification(notif);
+            } catch (notifErr) {
+              console.warn(`Failed to dispatch notification to admin ${adminId}:`, notifErr);
+            }
+          }
+        } catch (notifTotalErr) {
+          console.warn("Failed to send admin notification for pre-registration activation:", notifTotalErr);
         }
       }
     }
