@@ -218,7 +218,7 @@ export function BatchCertificateModal({
     let frontHtml = '';
     if (certSettings.useCustomLayout) {
       frontHtml = `
-        <div class="certificate-container flex flex-col justify-between items-center text-center p-0 rounded-2xl overflow-hidden aspect-[1.414/1] bg-slate-950 relative shadow-xl border border-slate-800" style="container-type: inline-size; background-image: url('${certSettings.backgroundImageUrl || ''}'); background-size: 100% 100%; background-position: center; background-repeat: no-repeat; --inst-size: ${certSettings.customInstitutionSize ?? 1.2}cqw; --title-size: ${certSettings.customTitleSize ?? 3.5}cqw; --recipient-size: ${certSettings.customRecipientSize ?? 2.2}cqw; --recipient-sub-size: ${(certSettings.customRecipientSize ?? 2.2) * 0.4}cqw; --desc-size: ${certSettings.customTextSize ?? 1.2}cqw; --course-size: ${certSettings.customCourseSize ?? 2.5}cqw; --meta-size: ${certSettings.customMetaSize ?? 1.0}cqw; --signatures-size: ${certSettings.customSignaturesSize ?? 1.1}cqw; --qr-size: ${certSettings.customQrSize ?? 10}cqw; --sig-init-size: ${(certSettings.customSignaturesSize ?? 1.1) * 0.9}cqw; --sig-name-size: ${(certSettings.customSignaturesSize ?? 1.1) * 0.7}cqw; --sig-title-size: ${(certSettings.customSignaturesSize ?? 1.1) * 0.5}cqw; --footnote-size: 0.45cqw;">
+        <div class="certificate-container flex flex-col justify-between items-center text-center p-0 rounded-2xl overflow-hidden aspect-[1.414/1] bg-slate-950 relative shadow-xl border border-slate-800" style="container-type: inline-size; background-image: url('${certSettings.backgroundImageUrl || ''}'); background-size: 100% 100%; background-position: center; background-repeat: no-repeat; --inst-size: ${(certSettings.customInstitutionSize ?? 1.2) * 0.95}cqw; --title-size: ${(certSettings.customTitleSize ?? 3.5) * 0.95}cqw; --recipient-size: ${(certSettings.customRecipientSize ?? 2.2) * 0.9}cqw; --recipient-sub-size: ${(certSettings.customRecipientSize ?? 2.2) * 0.4}cqw; --desc-size: ${(certSettings.customTextSize ?? 1.2) * 0.8}cqw; --course-size: ${(certSettings.customCourseSize ?? 2.5) * 0.82}cqw; --meta-size: ${(certSettings.customMetaSize ?? 1.0) * 0.85}cqw; --signatures-size: ${certSettings.customSignaturesSize ?? 1.1}cqw; --qr-size: ${certSettings.customQrSize ?? 10}cqw; --sig-init-size: ${(certSettings.customSignaturesSize ?? 1.1) * 0.9}cqw; --sig-name-size: ${(certSettings.customSignaturesSize ?? 1.1) * 0.7}cqw; --sig-title-size: ${(certSettings.customSignaturesSize ?? 1.1) * 0.5}cqw; --footnote-size: 0.45cqw;">
           <div class="absolute inset-0 w-full h-full font-sans">
             <div 
               class="absolute left-0 w-full font-mono uppercase tracking-widest font-extrabold px-4 truncate text-center"
@@ -549,11 +549,11 @@ export function BatchCertificateModal({
         flex-direction: column !important;
         justify-content: space-between !important;
         box-sizing: border-box !important;
-        width: 95vw !important;
-        height: 94vh !important;
-        max-width: calc(94vh * 1.414) !important;
-        max-height: calc(95vw / 1.414) !important;
-        margin: 3vh auto !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        max-width: none !important;
+        max-height: none !important;
+        margin: 0 !important;
         padding: 0 !important;
         page-break-inside: avoid !important;
         break-inside: avoid !important;
@@ -799,11 +799,11 @@ Pronto! Você obterá um arquivo PDF de alta definição, com imagens nítidas, 
             flex-direction: column !important;
             justify-content: space-between !important;
             box-sizing: border-box !important;
-            width: 95vw !important;
-            height: 94vh !important;
-            max-width: calc(94vh * 1.414) !important;
-            max-height: calc(95vw / 1.414) !important;
-            margin: 3vh auto !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            max-width: none !important;
+            max-height: none !important;
+            margin: 0 !important;
             page-break-inside: avoid !important;
             break-inside: avoid !important;
             page-break-after: always !important;
@@ -839,13 +839,13 @@ Pronto! Você obterá um arquivo PDF de alta definição, com imagens nítidas, 
             border: none !important;
 
             /* Override container query units with viewport widths (vw) on print so printing engines scale text perfectly */
-            --inst-size: ${certSettings.customInstitutionSize ?? 1.2}vw !important;
-            --title-size: ${certSettings.customTitleSize ?? 3.5}vw !important;
-            --recipient-size: ${certSettings.customRecipientSize ?? 2.2}vw !important;
+            --inst-size: ${(certSettings.customInstitutionSize ?? 1.2) * 0.95}vw !important;
+            --title-size: ${(certSettings.customTitleSize ?? 3.5) * 0.95}vw !important;
+            --recipient-size: ${(certSettings.customRecipientSize ?? 2.2) * 0.9}vw !important;
             --recipient-sub-size: ${(certSettings.customRecipientSize ?? 2.2) * 0.4}vw !important;
-            --desc-size: ${certSettings.customTextSize ?? 1.2}vw !important;
-            --course-size: ${certSettings.customCourseSize ?? 2.5}vw !important;
-            --meta-size: ${certSettings.customMetaSize ?? 1.0}vw !important;
+            --desc-size: ${(certSettings.customTextSize ?? 1.2) * 0.8}vw !important;
+            --course-size: ${(certSettings.customCourseSize ?? 2.5) * 0.82}vw !important;
+            --meta-size: ${(certSettings.customMetaSize ?? 1.0) * 0.85}vw !important;
             --signatures-size: ${certSettings.customSignaturesSize ?? 1.1}vw !important;
             --qr-size: ${certSettings.customQrSize ?? 10}vw !important;
             --sig-init-size: ${(certSettings.customSignaturesSize ?? 1.1) * 0.9}vw !important;
@@ -1082,13 +1082,13 @@ Pronto! Você obterá um arquivo PDF de alta definição, com imagens nítidas, 
                       aspectRatio: '1.414/1',
                     }),
                     containerType: 'inline-size' as any,
-                    '--inst-size': `${certSettings.customInstitutionSize ?? 1.2}cqw`,
-                    '--title-size': `${certSettings.customTitleSize ?? 3.5}cqw`,
-                    '--recipient-size': `${certSettings.customRecipientSize ?? 2.2}cqw`,
+                    '--inst-size': `${(certSettings.customInstitutionSize ?? 1.2) * 0.95}cqw`,
+                    '--title-size': `${(certSettings.customTitleSize ?? 3.5) * 0.95}cqw`,
+                    '--recipient-size': `${(certSettings.customRecipientSize ?? 2.2) * 0.9}cqw`,
                     '--recipient-sub-size': `${(certSettings.customRecipientSize ?? 2.2) * 0.4}cqw`,
-                    '--desc-size': `${certSettings.customTextSize ?? 1.2}cqw`,
-                    '--course-size': `${certSettings.customCourseSize ?? 2.5}cqw`,
-                    '--meta-size': `${certSettings.customMetaSize ?? 1.0}cqw`,
+                    '--desc-size': `${(certSettings.customTextSize ?? 1.2) * 0.8}cqw`,
+                    '--course-size': `${(certSettings.customCourseSize ?? 2.5) * 0.82}cqw`,
+                    '--meta-size': `${(certSettings.customMetaSize ?? 1.0) * 0.85}cqw`,
                     '--signatures-size': `${certSettings.customSignaturesSize ?? 1.1}cqw`,
                     '--qr-size': `${certSettings.customQrSize ?? 10}cqw`,
                     '--sig-init-size': `${(certSettings.customSignaturesSize ?? 1.1) * 0.9}cqw`,

@@ -220,11 +220,11 @@ export function CertificateModal({
             flex-direction: column !important;
             justify-content: space-between !important;
             box-sizing: border-box !important;
-            width: 95vw !important;
-            height: 94vh !important;
-            max-width: calc(94vh * 1.414) !important;
-            max-height: calc(95vw / 1.414) !important;
-            margin: 3vh auto !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            max-width: none !important;
+            max-height: none !important;
+            margin: 0 !important;
             page-break-inside: avoid !important;
             break-inside: avoid !important;
             -webkit-print-color-adjust: exact !important;
@@ -243,13 +243,13 @@ export function CertificateModal({
             border: none !important;
 
             /* Override container query units with viewport widths (vw) on print so printing engines scale text perfectly */
-            --inst-size: ${certSettings.customInstitutionSize ?? 1.2}vw !important;
-            --title-size: ${certSettings.customTitleSize ?? 3.5}vw !important;
-            --recipient-size: ${certSettings.customRecipientSize ?? 2.2}vw !important;
+            --inst-size: ${(certSettings.customInstitutionSize ?? 1.2) * 0.95}vw !important;
+            --title-size: ${(certSettings.customTitleSize ?? 3.5) * 0.95}vw !important;
+            --recipient-size: ${(certSettings.customRecipientSize ?? 2.2) * 0.9}vw !important;
             --recipient-sub-size: ${(certSettings.customRecipientSize ?? 2.2) * 0.4}vw !important;
-            --desc-size: ${certSettings.customTextSize ?? 1.2}vw !important;
-            --course-size: ${certSettings.customCourseSize ?? 2.5}vw !important;
-            --meta-size: ${certSettings.customMetaSize ?? 1.0}vw !important;
+            --desc-size: ${(certSettings.customTextSize ?? 1.2) * 0.8}vw !important;
+            --course-size: ${(certSettings.customCourseSize ?? 2.5) * 0.82}vw !important;
+            --meta-size: ${(certSettings.customMetaSize ?? 1.0) * 0.85}vw !important;
             --signatures-size: ${certSettings.customSignaturesSize ?? 1.1}vw !important;
             --qr-size: ${certSettings.customQrSize ?? 10}vw !important;
             --sig-init-size: ${(certSettings.customSignaturesSize ?? 1.1) * 0.9}vw !important;
@@ -364,13 +364,13 @@ export function CertificateModal({
                 aspectRatio: '1.414/1',
               }),
               containerType: 'inline-size' as any,
-              '--inst-size': `${certSettings.customInstitutionSize ?? 1.2}cqw`,
-              '--title-size': `${certSettings.customTitleSize ?? 3.5}cqw`,
-              '--recipient-size': `${certSettings.customRecipientSize ?? 2.2}cqw`,
+              '--inst-size': `${(certSettings.customInstitutionSize ?? 1.2) * 0.95}cqw`,
+              '--title-size': `${(certSettings.customTitleSize ?? 3.5) * 0.95}cqw`,
+              '--recipient-size': `${(certSettings.customRecipientSize ?? 2.2) * 0.9}cqw`,
               '--recipient-sub-size': `${(certSettings.customRecipientSize ?? 2.2) * 0.4}cqw`,
-              '--desc-size': `${certSettings.customTextSize ?? 1.2}cqw`,
-              '--course-size': `${certSettings.customCourseSize ?? 2.5}cqw`,
-              '--meta-size': `${certSettings.customMetaSize ?? 1.0}cqw`,
+              '--desc-size': `${(certSettings.customTextSize ?? 1.2) * 0.8}cqw`,
+              '--course-size': `${(certSettings.customCourseSize ?? 2.5) * 0.82}cqw`,
+              '--meta-size': `${(certSettings.customMetaSize ?? 1.0) * 0.85}cqw`,
               '--signatures-size': `${certSettings.customSignaturesSize ?? 1.1}cqw`,
               '--qr-size': `${certSettings.customQrSize ?? 10}cqw`,
               '--sig-init-size': `${(certSettings.customSignaturesSize ?? 1.1) * 0.9}cqw`,
