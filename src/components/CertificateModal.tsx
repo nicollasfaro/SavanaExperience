@@ -676,9 +676,9 @@ export function CertificateModal({
                           <span className="text-[8px] font-mono text-slate-500">{mod.lessons?.length || 0} aulas</span>
                         </div>
                         {/* Title */}
-                        <h4 className="font-display font-bold text-slate-800 text-[10px] sm:text-xs line-clamp-1 mb-1">{mod.title}</h4>
+                        <h4 className="font-display font-bold text-slate-800 text-[10px] sm:text-xs mb-1">{mod.title}</h4>
                         {/* Description */}
-                        <p className="text-[8px] sm:text-[10px] text-slate-500 line-clamp-1 mb-2 leading-relaxed">{mod.description || 'Conteúdo programático de especialidade teórica e prática.'}</p>
+                        <p className="text-[8px] sm:text-[10px] text-slate-500 mb-2 leading-relaxed">{mod.description || 'Conteúdo programático de especialidade teórica e prática.'}</p>
                       </div>
                       
                       {/* Lesson Bullets if space allows */}
