@@ -35,46 +35,49 @@ export function CertificateModal({
   useEffect(() => {
     if (!isOpen) return;
 
-    // Check if certificate has already been issued
-    const list = localDB.getIssuedCertificates(userId);
-    const existing = list.find((c: IssuedCertificate) => c.courseId === courseId);
+    const checkAndIssue = async () => {
+      // Check if certificate has already been issued
+      const existing = await localDB.getCertificateByUserAndCourse(userId, courseId);
 
-    if (existing) {
-      if (existing.userName !== studentName) {
-        const updatedCert = { ...existing, userName: studentName };
-        localDB.saveIssuedCertificate(updatedCert);
-        setCert(updatedCert);
+      if (existing) {
+        if (existing.userName !== studentName) {
+          const updatedCert = { ...existing, userName: studentName };
+          await localDB.saveIssuedCertificate(updatedCert);
+          setCert(updatedCert);
+        } else {
+          setCert(existing);
+        }
       } else {
-        setCert(existing);
+        // Create a unique, once-and-for-all Certificate object
+        const issueDate = new Date();
+        
+        const yearChar = issueDate.getFullYear().toString().slice(-2);
+        const monthChar = (issueDate.getMonth() + 1).toString().padStart(2, '0');
+        const studentPrefix = studentName.trim().replace(/\s+/g, '').replace(/[^a-zA-Z]/g, '').slice(0, 3).toUpperCase() || 'STU';
+        const coursePrefix = courseId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 3).toUpperCase() || 'CRS';
+        const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+        const uniqueCertId = `SV-${yearChar}${monthChar}-${studentPrefix}-${coursePrefix}-${randomSuffix}`;
+
+        const newCert: IssuedCertificate = {
+          id: uniqueCertId,
+          userId,
+          userName: studentName,
+          courseId,
+          courseTitle,
+          instructorName: instructorName && instructorName !== "Coordenador Docente" 
+            ? instructorName 
+            : certSettings.chiefInstructorName,
+          duration: duration || "40 horas",
+          xpReward: xpReward || 500,
+          issuedAt: issueDate.toISOString()
+        };
+
+        await localDB.saveIssuedCertificate(newCert);
+        setCert(newCert);
       }
-    } else {
-      // Create a unique, once-and-for-all Certificate object
-      const issueDate = new Date();
-      
-      const yearChar = issueDate.getFullYear().toString().slice(-2);
-      const monthChar = (issueDate.getMonth() + 1).toString().padStart(2, '0');
-      const studentPrefix = studentName.trim().replace(/\s+/g, '').replace(/[^a-zA-Z]/g, '').slice(0, 3).toUpperCase() || 'STU';
-      const coursePrefix = courseId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 3).toUpperCase() || 'CRS';
-      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-      const uniqueCertId = `SV-${yearChar}${monthChar}-${studentPrefix}-${coursePrefix}-${randomSuffix}`;
+    };
 
-      const newCert: IssuedCertificate = {
-        id: uniqueCertId,
-        userId,
-        userName: studentName,
-        courseId,
-        courseTitle,
-        instructorName: instructorName && instructorName !== "Coordenador Docente" 
-          ? instructorName 
-          : certSettings.chiefInstructorName,
-        duration: duration || "40 horas",
-        xpReward: xpReward || 500,
-        issuedAt: issueDate.toISOString()
-      };
-
-      localDB.saveIssuedCertificate(newCert);
-      setCert(newCert);
-    }
+    checkAndIssue();
   }, [isOpen, userId, courseId, studentName, courseTitle, instructorName, duration, xpReward, certSettings.chiefInstructorName]);
 
   if (!isOpen) return null;

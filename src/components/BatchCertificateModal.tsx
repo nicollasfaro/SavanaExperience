@@ -49,8 +49,7 @@ export function BatchCertificateModal({
     const generateAll = async () => {
       try {
         for (const student of students) {
-          const list = localDB.getIssuedCertificates(student.userId);
-          const existing = list.find((c: IssuedCertificate) => c.courseId === courseId);
+          const existing = await localDB.getCertificateByUserAndCourse(student.userId, courseId);
 
           if (existing) {
             if (existing.userName !== student.name) {
@@ -539,11 +538,22 @@ export function BatchCertificateModal({
       body {
         background-color: transparent !important;
         padding: 0 !important;
+        margin: 0 !important;
+        display: block !important;
       }
       .no-print {
         display: none !important;
       }
-      .page-break {
+      .page-break-container {
+        display: block !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
+      .page-break-container-first {
         page-break-after: always !important;
         break-after: page !important;
       }
@@ -556,6 +566,7 @@ export function BatchCertificateModal({
         max-width: none !important;
         max-height: none !important;
         border: none !important;
+        aspect-ratio: 1.414 / 1 !important;
       }
     }
     body {
@@ -593,11 +604,11 @@ export function BatchCertificateModal({
     </button>
   </div>
 
-  <div class="page-break w-full flex justify-center items-center py-4">
+  <div class="page-break-container page-break-container-first w-full flex justify-center items-center py-4">
     ${frontHtml}
   </div>
 
-  <div class="w-full flex justify-center items-center py-4">
+  <div class="page-break-container w-full flex justify-center items-center py-4">
     ${backHtml}
   </div>
 
@@ -698,8 +709,50 @@ Pronto! Você obterá um arquivo PDF de alta definição, com imagens nítidas, 
             size: landscape;
             margin: 0;
           }
+          html, body {
+            width: 100% !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: transparent !important;
+            overflow: visible !important;
+          }
           body * {
             visibility: hidden !important;
+          }
+          /* Reset parent overlay and card wrappers to absolute full page layouts to prevent scroll bar clippings */
+          #batch-certificate-modal-overlay {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            display: block !important;
+            overflow: visible !important;
+            background: transparent !important;
+            z-index: 9999999 !important;
+            box-shadow: none !important;
+            visibility: visible !important;
+          }
+          #batch-certificate-modal-wrapper {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            max-width: none !important;
+            height: auto !important;
+            max-height: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            display: block !important;
+            overflow: visible !important;
+            border: none !important;
+            border-radius: 0 !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            visibility: visible !important;
           }
           /* Print only the batch print container */
           #batch-print-container {

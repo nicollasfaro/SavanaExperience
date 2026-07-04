@@ -616,6 +616,37 @@ Dr. Gabriel e equipe Savana Experience.`);
     return this.get(`issued_certificates_${userId}`, []);
   }
 
+  async getCertificateByUserAndCourse(userId: string, courseId: string): Promise<IssuedCertificate | null> {
+    const list = this.getIssuedCertificates(userId);
+    const existing = list.find((c: IssuedCertificate) => c.courseId === courseId);
+    if (existing) return existing;
+
+    if (!this.isFirebaseAuthenticated) return null;
+
+    try {
+      const q = query(
+        collection(db, 'issuedCertificates'),
+        where('userId', '==', userId),
+        where('courseId', '==', courseId)
+      );
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const cert = snap.docs[0].data() as IssuedCertificate;
+        const key = `issued_certificates_${userId}`;
+        const currentList = this.get(key, []);
+        if (!currentList.some((c: IssuedCertificate) => c.id === cert.id)) {
+          currentList.push(cert);
+          this.set(key, currentList);
+          this.notify(key);
+        }
+        return cert;
+      }
+    } catch (err) {
+      console.warn("Failed to query certificate from Firestore:", err);
+    }
+    return null;
+  }
+
   async saveIssuedCertificate(cert: IssuedCertificate) {
     const key = `issued_certificates_${cert.userId}`;
     const list = this.get(key, []);
