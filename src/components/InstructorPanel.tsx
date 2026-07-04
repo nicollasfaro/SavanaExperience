@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Course, CourseModule, LeaderboardUser, Turma, Lesson, QuizQuestion } from '../types';
 import { localDB, getCachedAccessToken, signInWithGmail } from '../firebase';
-import { BookOpen, Users, Award, TrendingUp, Plus, Edit, Trash2, CloudLightning, Calendar, Download, AlertCircle, Video, Key, Loader2, CheckCircle, ExternalLink, X, Search } from 'lucide-react';
+import { BookOpen, Users, Award, TrendingUp, Plus, Edit, Trash2, CloudLightning, Calendar, Download, AlertCircle, Video, Key, Lock, Loader2, CheckCircle, ExternalLink, X, Search } from 'lucide-react';
 
 interface InstructorPanelProps {
   currentUserId: string;
@@ -90,6 +90,7 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
   const [lesDuration, setLesDuration] = useState('15 min');
   const [lesType, setLesType] = useState<'video' | 'article' | 'quiz' | 'file'>('video');
   const [lesVideoUrl, setLesVideoUrl] = useState('https://vjs.zencdn.net/v/oceans.mp4');
+  const [lesVideoIsEncrypted, setLesVideoIsEncrypted] = useState(false);
   const [lesArticleContent, setLesArticleContent] = useState('');
   const [lesQuizQuestions, setLesQuizQuestions] = useState<QuizQuestion[]>([]);
   const [lesFileUrl, setLesFileUrl] = useState('https://example.com/material.pdf');
@@ -355,6 +356,7 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
     setLesDuration('15 min');
     setLesType('video');
     setLesVideoUrl('https://vjs.zencdn.net/v/oceans.mp4');
+    setLesVideoIsEncrypted(false);
     setLesArticleContent('### Título do Artigo de Apoio\n\nEste artigo contém os conceitos teóricos fundamentais para a sua formação...');
     setLesFileUrl('https://example.com/material.pdf');
     setLesFileName('Material de Apoio.pdf');
@@ -384,6 +386,7 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
     setLesDuration(lesson.duration || '15 min');
     setLesType(lesson.type || 'video');
     setLesVideoUrl(lesson.videoUrl || 'https://vjs.zencdn.net/v/oceans.mp4');
+    setLesVideoIsEncrypted(!!lesson.videoIsEncrypted);
     setLesArticleContent(lesson.articleContent || '### Notas de Aula\n\nConteúdo explicativo da aula.');
     setLesFileUrl(lesson.fileUrl || 'https://example.com/material.pdf');
     setLesFileName(lesson.fileName || 'Material de Apoio.pdf');
@@ -438,6 +441,7 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
         type: lesType,
         comingSoon: lesComingSoon,
         videoUrl: (lesType === 'video' && !lesComingSoon) ? lesVideoUrl : undefined,
+        videoIsEncrypted: (lesType === 'video' && !lesComingSoon) ? lesVideoIsEncrypted : undefined,
         articleContent: lesType === 'article' ? lesArticleContent : undefined,
         fileUrl: (lesType === 'file' && !lesComingSoon) ? lesFileUrl : undefined,
         fileName: lesType === 'file' ? lesFileName : undefined,
@@ -467,6 +471,7 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
         type: lesType,
         comingSoon: lesComingSoon,
         videoUrl: (lesType === 'video' && !lesComingSoon) ? lesVideoUrl : undefined,
+        videoIsEncrypted: (lesType === 'video' && !lesComingSoon) ? lesVideoIsEncrypted : undefined,
         articleContent: lesType === 'article' ? lesArticleContent : undefined,
         fileUrl: (lesType === 'file' && !lesComingSoon) ? lesFileUrl : undefined,
         fileName: lesType === 'file' ? lesFileName : undefined,
@@ -1757,16 +1762,34 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
               {lesType === 'video' && !lesComingSoon && (
                 <div className="bg-slate-950/40 border border-slate-850 p-4 rounded-xl space-y-3 animate-fade-in">
                   <div>
-                    <label className="block text-[10px] uppercase tracking-wider font-mono text-emerald-400 mb-1">URL do Vídeo (.mp4 ou YouTube)</label>
-                    <input
-                      type="text"
+                    <label className="block text-[10px] uppercase tracking-wider font-mono text-emerald-400 mb-1">Link ou Código Embed do Vídeo (YouTube, Vimeo, MP4 ou &lt;iframe&gt;)</label>
+                    <textarea
+                      rows={3}
                       required={lesType === 'video' && !lesComingSoon}
                       value={lesVideoUrl}
                       onChange={(e) => setLesVideoUrl(e.target.value)}
-                      placeholder="Ex: https://vjs.zencdn.net/v/oceans.mp4"
+                      placeholder="Cole o Link (ex: https://youtu.be/...) ou o Código de Incorporação completo (ex: <iframe src=...></iframe>)"
                       className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-100 focus:outline-none focus:border-emerald-500 font-mono"
                     />
-                    <span className="text-[9px] text-slate-500 font-semibold block mt-1">Utilize qualquer link de mídia direto compatível com tags HTML5 de vídeo.</span>
+                    <span className="text-[9px] text-slate-500 font-semibold block mt-1">Dica: Você pode colar links convencionais (YouTube, Vimeo, arquivos mp4) ou o código de incorporação HTML completo (&lt;iframe&gt;) fornecido por plataformas de vídeo.</span>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-900/60">
+                    <label className="flex items-center gap-2 cursor-pointer font-sans select-none">
+                      <input
+                        type="checkbox"
+                        checked={lesVideoIsEncrypted}
+                        onChange={(e) => setLesVideoIsEncrypted(e.target.checked)}
+                        className="w-4 h-4 text-emerald-500 rounded bg-slate-900 border-slate-800 focus:ring-emerald-500"
+                      />
+                      <span className="text-xs text-slate-300 font-semibold flex items-center gap-1.5">
+                        <Lock size={12} className="text-amber-500 shrink-0" />
+                        Encriptar / Ocultar link original no "Inspecionar"
+                      </span>
+                    </label>
+                    <span className="text-[9px] text-amber-500/80 font-medium block mt-1 leading-normal pl-6">
+                      O sistema converterá o reprodutor de vídeo em uma sandbox segura utilizando um carregador de blob isolado (blob:), ocultando o link original no código-fonte contra cópias.
+                    </span>
                   </div>
                 </div>
               )}

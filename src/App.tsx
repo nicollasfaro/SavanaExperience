@@ -113,6 +113,185 @@ export function SavanaLogo({ className = "w-10 h-10" }: { className?: string }) 
   );
 }
 
+function SafeVideoPlayer({ videoUrl, isEncrypted }: { videoUrl: string; isEncrypted?: boolean }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isEncrypted) {
+      setBlobUrl(null);
+      return;
+    }
+
+    const url = videoUrl.trim();
+    let finalEmbedSrc = '';
+
+    // 1. Is it a raw iframe embed code?
+    if (url.toLowerCase().startsWith('<iframe') || url.toLowerCase().includes('<iframe')) {
+      const srcMatch = url.match(/src="([^"]+)"/i);
+      if (srcMatch) {
+        finalEmbedSrc = srcMatch[1];
+      } else {
+        finalEmbedSrc = url;
+      }
+    } else {
+      // 2. Is it a YouTube URL?
+      const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([^"&?\/\s]{11})/i;
+      const ytMatch = url.match(youtubeRegex);
+
+      // 3. Is it a Vimeo URL?
+      const vimeoRegex = /(?:vimeo\.com\/|player\.vimeo\.com\/video\/)(\d+)/i;
+      const vimeoMatch = url.match(vimeoRegex);
+
+      if (ytMatch) {
+        finalEmbedSrc = `https://www.youtube.com/embed/${ytMatch[1]}`;
+      } else if (vimeoMatch) {
+        finalEmbedSrc = `https://player.vimeo.com/video/${vimeoMatch[1]}`;
+      } else {
+        finalEmbedSrc = url;
+      }
+    }
+
+    // Convert src to Base64 to obfuscate it inside the Blob URL code
+    const encodedSrc = btoa(finalEmbedSrc);
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            html, body {
+              margin: 0;
+              padding: 0;
+              width: 100%;
+              height: 100%;
+              overflow: hidden;
+              background-color: #000;
+            }
+            iframe, video {
+              width: 100%;
+              height: 100%;
+              border: 0;
+            }
+          </style>
+        </head>
+        <body>
+          <div id="player-container"></div>
+          <script>
+            (function() {
+              try {
+                var decodedSrc = atob("${encodedSrc}");
+                var container = document.getElementById("player-container");
+                
+                if (decodedSrc.toLowerCase().endsWith('.mp4') || decodedSrc.toLowerCase().includes('.mp4?') || (!decodedSrc.includes('youtube.com') && !decodedSrc.includes('vimeo.com'))) {
+                  var video = document.createElement('video');
+                  video.src = decodedSrc;
+                  video.controls = true;
+                  video.autoplay = false;
+                  container.appendChild(video);
+                } else {
+                  var iframe = document.createElement('iframe');
+                  iframe.src = decodedSrc;
+                  iframe.frameBorder = "0";
+                  iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+                  iframe.allowFullscreen = true;
+                  container.appendChild(iframe);
+                }
+              } catch (e) {
+                console.error("Secure video loader exception:", e);
+              }
+            })();
+          </script>
+        </body>
+      </html>
+    `;
+
+    const blob = new Blob([htmlContent], { type: 'text/html' });
+    const urlObject = URL.createObjectURL(blob);
+    setBlobUrl(urlObject);
+
+    return () => {
+      URL.revokeObjectURL(urlObject);
+    };
+  }, [videoUrl, isEncrypted]);
+
+  if (!isEncrypted || !blobUrl) {
+    const url = videoUrl.trim();
+
+    if (url.toLowerCase().startsWith('<iframe') || url.toLowerCase().includes('<iframe')) {
+      let cleanEmbed = url;
+      if (cleanEmbed.includes('width=')) {
+        cleanEmbed = cleanEmbed.replace(/width="[^"]*"/g, 'width="100%"');
+      }
+      if (cleanEmbed.includes('height=')) {
+        cleanEmbed = cleanEmbed.replace(/height="[^"]*"/g, 'height="100%"');
+      }
+      return (
+        <div 
+          className="w-full h-full" 
+          dangerouslySetInnerHTML={{ __html: cleanEmbed }} 
+        />
+      );
+    }
+
+    const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([^"&?\/\s]{11})/i;
+    const ytMatch = url.match(youtubeRegex);
+    if (ytMatch) {
+      const videoId = ytMatch[1];
+      return (
+        <iframe
+          src={`https://www.youtube.com/embed/${videoId}`}
+          title="YouTube video player"
+          frameBorder="0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+          className="w-full h-full border-0"
+        />
+      );
+    }
+
+    const vimeoRegex = /(?:vimeo\.com\/|player\.vimeo\.com\/video\/)(\d+)/i;
+    const vimeoMatch = url.match(vimeoRegex);
+    if (vimeoMatch) {
+      const videoId = vimeoMatch[1];
+      return (
+        <iframe
+          src={`https://player.vimeo.com/video/${videoId}`}
+          title="Vimeo video player"
+          frameBorder="0"
+          allow="autoplay; fullscreen; picture-in-picture"
+          allowFullScreen
+          className="w-full h-full border-0"
+        />
+      );
+    }
+
+    return (
+      <video 
+        src={url} 
+        controls 
+        className="w-full h-full object-contain" 
+      />
+    );
+  }
+
+  return (
+    <div className="w-full h-full relative">
+      <iframe
+        src={blobUrl}
+        title="Secure Video Player"
+        className="w-full h-full border-0"
+        allowFullScreen
+        sandbox="allow-scripts allow-same-origin allow-presentation"
+      />
+      <div className="absolute top-3 left-3 bg-slate-950/85 backdrop-blur-md px-2.5 py-1 rounded-md border border-emerald-500/30 text-[9px] font-mono text-emerald-450 font-bold uppercase tracking-wider flex items-center gap-1 pointer-events-none select-none shadow-lg">
+        <Lock size={10} className="text-emerald-400 animate-pulse" />
+        Reprodutor Criptografado Ativo
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   // 1. Theme state (default dark, toggle to light)
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
@@ -2025,11 +2204,7 @@ export default function App() {
                       <div className="space-y-4">
                         {/* Video Frame */}
                         <div className="aspect-video bg-black rounded-2xl overflow-hidden relative shadow-inner border border-slate-805">
-                          <video 
-                            src={selectedLesson.videoUrl} 
-                            controls 
-                            className="w-full h-full object-contain" 
-                          />
+                          <SafeVideoPlayer videoUrl={selectedLesson.videoUrl} isEncrypted={selectedLesson.videoIsEncrypted} />
                         </div>
 
                         {/* Complete reward actions */}

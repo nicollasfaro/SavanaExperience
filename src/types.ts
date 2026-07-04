@@ -70,6 +70,7 @@ export interface Lesson {
   duration: string;
   type: 'video' | 'article' | 'quiz' | 'file';
   videoUrl?: string; // Standard video player simulation URL
+  videoIsEncrypted?: boolean; // Hides YouTube original link on DOM inspection
   articleContent?: string;
   quiz?: Quiz;
   fileUrl?: string;
