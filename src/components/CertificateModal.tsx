@@ -138,6 +138,18 @@ export function CertificateModal({
             size: landscape;
             margin: 0;
           }
+          html, body {
+            width: 100% !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: transparent !important;
+            overflow: visible !important;
+          }
+          body {
+            min-height: 0 !important;
+            display: block !important;
+          }
           body * {
             visibility: hidden !important;
           }
@@ -146,7 +158,18 @@ export function CertificateModal({
             visibility: visible !important;
           }
           
-          /* Reset parent overlay and card wrappers to absolute full page layouts to prevent scroll bar clippings */
+          /* Reset parent overlay, root wrapper and all ancestors to clean layouts to prevent extra offsets */
+          #root, #root > * {
+            margin: 0 !important;
+            padding: 0 !important;
+            position: static !important;
+            display: block !important;
+            width: auto !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            transform: none !important;
+          }
           #certificate-modal-overlay {
             position: absolute !important;
             left: 0 !important;
@@ -196,11 +219,12 @@ export function CertificateModal({
             display: flex !important;
             flex-direction: column !important;
             justify-content: space-between !important;
-            width: 100vw !important;
-            height: 100vh !important;
-            aspect-ratio: 1.414/1 !important;
-            margin: 0 !important;
             box-sizing: border-box !important;
+            width: 95vw !important;
+            height: 94vh !important;
+            max-width: calc(94vh * 1.414) !important;
+            max-height: calc(95vw / 1.414) !important;
+            margin: 3vh auto !important;
             page-break-inside: avoid !important;
             break-inside: avoid !important;
             -webkit-print-color-adjust: exact !important;
