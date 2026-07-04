@@ -98,10 +98,6 @@ export function BatchCertificateModal({
     generateAll();
   }, [isOpen, students, courseId, courseTitle, instructorName, duration, xpReward, certSettings.chiefInstructorName]);
 
-  const handlePrintAll = () => {
-    window.print();
-  };
-
   const handleCopyCode = (id: string) => {
     navigator.clipboard.writeText(id);
     setCopied(id);
@@ -637,13 +633,202 @@ export function BatchCertificateModal({
   };
 
   const handlePrintSingle = (certId: string) => {
+    const found = certs.find(c => c.cert.id === certId);
+    if (!found) return;
+
     setPreparingPrint(certId);
-    setPrintCertId(certId);
-    setTimeout(() => {
-      window.print();
+    const htmlContent = getSingleCertificateHTML(found.student, found.cert);
+    
+    // Create temporary hidden iframe
+    const iframe = document.createElement('iframe');
+    iframe.id = `single-print-iframe-${certId}`;
+    iframe.style.position = 'fixed';
+    iframe.style.bottom = '0';
+    iframe.style.right = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    iframe.style.margin = '0';
+    iframe.style.padding = '0';
+    iframe.style.visibility = 'hidden';
+    
+    document.body.appendChild(iframe);
+    
+    const doc = iframe.contentWindow?.document || iframe.contentDocument;
+    if (!doc) {
+      console.error("Não foi possível acessar o documento do iframe de impressão");
       setPreparingPrint(null);
-      setPrintCertId(null);
-    }, 450);
+      return;
+    }
+    
+    doc.open();
+    doc.write(htmlContent);
+    doc.close();
+    
+    const printWindow = iframe.contentWindow;
+    if (printWindow) {
+      setTimeout(() => {
+        printWindow.focus();
+        printWindow.print();
+        setPreparingPrint(null);
+        setTimeout(() => {
+          const checkEl = document.getElementById(`single-print-iframe-${certId}`);
+          if (checkEl) {
+            document.body.removeChild(checkEl);
+          }
+        }, 1500);
+      }, 800);
+    } else {
+      document.body.removeChild(iframe);
+      setPreparingPrint(null);
+    }
+  };
+
+  const handlePrintAll = () => {
+    let combinedBodyHtml = '';
+    
+    certs.forEach(({ student, cert }) => {
+      const studentHtml = getSingleCertificateHTML(student, cert);
+      const bodyMatch = studentHtml.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+      if (bodyMatch) {
+        combinedBodyHtml += bodyMatch[1];
+      }
+    });
+
+    const fullHTML = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Certificados - Turma ${turma.name}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+            serif: ['Playfair Display', 'serif'],
+          },
+          colors: {
+            emerald: {
+              450: '#10b981',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @page {
+      size: landscape;
+      margin: 0;
+    }
+    @media print {
+      body {
+        background-color: transparent !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        display: block !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .page-break-container {
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        box-sizing: border-box !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        max-width: none !important;
+        max-height: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        page-break-after: always !important;
+        break-after: page !important;
+      }
+      .certificate-container {
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        margin: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        max-width: none !important;
+        max-height: none !important;
+        border: none !important;
+      }
+    }
+    body {
+      background-color: #0b0f19;
+      color: #f1f5f9;
+    }
+    .certificate-container {
+      aspect-ratio: 1.414 / 1;
+      width: 100%;
+      max-width: 1120px;
+      margin: 0 auto;
+      position: relative;
+    }
+    * {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+  </style>
+</head>
+<body class="p-4 md:p-8 font-sans flex flex-col items-center justify-center min-h-screen gap-6">
+  
+  ${combinedBodyHtml}
+
+</body>
+</html>`;
+
+    // Print via hidden iframe
+    const iframe = document.createElement('iframe');
+    iframe.id = 'batch-certificates-print-iframe';
+    iframe.style.position = 'fixed';
+    iframe.style.bottom = '0';
+    iframe.style.right = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    iframe.style.margin = '0';
+    iframe.style.padding = '0';
+    iframe.style.visibility = 'hidden';
+    
+    document.body.appendChild(iframe);
+    
+    const doc = iframe.contentWindow?.document || iframe.contentDocument;
+    if (!doc) {
+      console.error("Não foi possível acessar o documento do iframe de impressão");
+      return;
+    }
+    
+    doc.open();
+    doc.write(fullHTML);
+    doc.close();
+    
+    const printWindow = iframe.contentWindow;
+    if (printWindow) {
+      setTimeout(() => {
+        printWindow.focus();
+        printWindow.print();
+        setTimeout(() => {
+          const checkEl = document.getElementById('batch-certificates-print-iframe');
+          if (checkEl) {
+            document.body.removeChild(checkEl);
+          }
+        }, 1500);
+      }, 1000);
+    } else {
+      document.body.removeChild(iframe);
+    }
   };
 
   const handleDownloadZip = async () => {

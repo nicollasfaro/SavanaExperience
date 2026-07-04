@@ -102,8 +102,512 @@ export function CertificateModal({
 
   const certificateId = cert.id;
 
+  const getSingleCertificateHTML = () => {
+    let modulesHtml = '';
+    if (sortedModules.length > 0) {
+      const gridColsClass = sortedModules.length <= 3 
+        ? 'grid-cols-1 max-w-xl mx-auto' 
+        : sortedModules.length <= 6 
+          ? 'grid-cols-2' 
+          : 'grid-cols-3';
+
+      let modulesCards = '';
+      sortedModules.forEach((mod, idx) => {
+        let lessonsListHtml = '';
+        if (mod.lessons && mod.lessons.length > 0) {
+          const slicedLessons = mod.lessons.slice(0, 2);
+          let lessonsItems = '';
+          slicedLessons.forEach((les) => {
+            lessonsItems += `
+              <li class="text-[8px] sm:text-[9px] text-slate-600 truncate flex items-center gap-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-600/30 inline-block shrink-0"></span>
+                <span class="truncate">${les.title}</span>
+              </li>
+            `;
+          });
+
+          let additionalText = '';
+          if (mod.lessons.length > 2) {
+            additionalText = `
+              <li class="text-[7px] sm:text-[8px] font-mono text-slate-400 italic pl-2.5">
+                + ${mod.lessons.length - 2} tópicos adicionais
+              </li>
+            `;
+          }
+
+          lessonsListHtml = `
+            <div class="border-t border-slate-200 pt-1.5 mt-1 sm:mt-2">
+              <ul class="space-y-0.5 text-left">
+                ${lessonsItems}
+                ${additionalText}
+              </ul>
+            </div>
+          `;
+        }
+
+        modulesCards += `
+          <div class="bg-slate-50 border border-slate-200/80 p-2.5 sm:p-3 rounded-xl flex flex-col justify-between hover:border-slate-300 transition-colors text-slate-800">
+            <div class="text-left">
+              <div class="flex justify-between items-center mb-1">
+                <span class="text-[8px] sm:text-[9px] font-mono text-emerald-700 font-bold uppercase">MÓDULO ${(idx + 1).toString().padStart(2, '0')}</span>
+                <span class="text-[8px] font-mono text-slate-500">${mod.lessons?.length || 0} aulas</span>
+              </div>
+              <h4 class="font-sans font-bold text-slate-900 text-[10px] sm:text-xs mb-1">${mod.title}</h4>
+              <p class="text-[8px] sm:text-[10px] text-slate-500 mb-2 leading-relaxed">${mod.description || 'Conteúdo programático de especialidade teórica e prática.'}</p>
+            </div>
+            ${lessonsListHtml}
+          </div>
+        `;
+      });
+
+      modulesHtml = `
+        <div class="grid gap-3 w-full text-left ${gridColsClass}">
+          ${modulesCards}
+        </div>
+      `;
+    } else {
+      modulesHtml = `
+        <div class="text-center py-8 border border-dashed border-slate-200 rounded-2xl max-w-md mx-auto">
+          <svg class="text-slate-400 mx-auto mb-2 opacity-60" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
+          <p class="text-xs text-slate-600 font-mono">Estrutura curricular unificada.</p>
+          <p class="text-[10px] text-slate-500 mt-1">Este programa cumpre integralmente os requisitos educacionais estabelecidos pela instituição de ensino.</p>
+        </div>
+      `;
+    }
+
+    let frontHtml = '';
+    if (certSettings.useCustomLayout) {
+      frontHtml = `
+        <div class="certificate-container flex flex-col justify-between items-center text-center p-0 rounded-2xl overflow-hidden aspect-[1.414/1] bg-slate-950 relative shadow-xl border border-slate-800" style="container-type: inline-size; background-image: url('${certSettings.backgroundImageUrl || ''}'); background-size: 100% 100%; background-position: center; background-repeat: no-repeat; --inst-size: ${(certSettings.customInstitutionSize ?? 1.2) * 0.95}cqw; --title-size: ${(certSettings.customTitleSize ?? 3.5) * 0.95}cqw; --recipient-size: ${(certSettings.customRecipientSize ?? 2.2) * 0.9}cqw; --recipient-sub-size: ${(certSettings.customRecipientSize ?? 2.2) * 0.4}cqw; --desc-size: ${(certSettings.customTextSize ?? 1.2) * 0.8}cqw; --course-size: ${(certSettings.customCourseSize ?? 2.5) * 0.82}cqw; --meta-size: ${(certSettings.customMetaSize ?? 1.0) * 0.85}cqw; --signatures-size: ${certSettings.customSignaturesSize ?? 1.1}cqw; --qr-size: ${certSettings.customQrSize ?? 10}cqw; --sig-init-size: ${(certSettings.customSignaturesSize ?? 1.1) * 0.9}cqw; --sig-name-size: ${(certSettings.customSignaturesSize ?? 1.1) * 0.7}cqw; --sig-title-size: ${(certSettings.customSignaturesSize ?? 1.1) * 0.5}cqw; --footnote-size: 0.45cqw;">
+          <div class="absolute inset-0 w-full h-full font-sans">
+            <div 
+              class="absolute left-0 w-full font-mono uppercase tracking-widest font-extrabold px-4 truncate text-center"
+              style="top: ${certSettings.customInstitutionTop ?? 14}%; font-size: var(--inst-size, ${certSettings.customInstitutionSize ?? 1.2}cqw); color: ${certSettings.customInstitutionColor ?? '#94a3b8'};"
+            >
+              ${certSettings.institutionName}
+            </div>
+
+            <div 
+              class="absolute left-0 w-full font-display font-black tracking-tight uppercase px-4 truncate text-center"
+              style="top: ${certSettings.customTitleTop ?? 24}%; font-size: var(--title-size, ${certSettings.customTitleSize ?? 3.5}cqw); color: ${certSettings.customTitleColor ?? '#ffffff'};"
+            >
+              ${certSettings.certificateTitle}
+            </div>
+
+            <div 
+              class="absolute left-0 w-full space-y-1 px-4 text-center"
+              style="top: ${certSettings.customRecipientTop ?? 40}%;"
+            >
+              <p 
+                class="font-mono uppercase tracking-wide opacity-80"
+                style="font-size: var(--recipient-sub-size, ${(certSettings.customRecipientSize ?? 2.2) * 0.4}cqw); color: ${certSettings.customRecipientColor ?? '#67e8f9'};"
+              >
+                Este certificado honorário é orgulhosamente outorgado a
+              </p>
+              <h2 
+                class="font-display font-bold font-serif leading-none italic truncate"
+                style="font-size: var(--recipient-size, ${certSettings.customRecipientSize ?? 2.2}cqw); color: ${certSettings.customRecipientColor ?? '#67e8f9'};"
+              >
+                ${studentName}
+              </h2>
+            </div>
+
+            <p 
+              class="absolute left-1/2 -translate-x-1/2 w-[85%] leading-relaxed text-center font-sans"
+              style="top: ${certSettings.customTextTop ?? 52}%; font-size: var(--desc-size, ${certSettings.customTextSize ?? 1.2}cqw); color: ${certSettings.customTextColor ?? '#cbd5e1'};"
+            >
+              ${certSettings.textDescription}
+            </p>
+
+            <div 
+              class="absolute left-1/2 -translate-x-1/2 px-4 py-1.5 bg-slate-950/40 border border-slate-800/40 rounded-xl text-center"
+              style="top: ${certSettings.customCourseTop ?? 62}%;"
+            >
+              <span 
+                class="font-display font-bold tracking-wide truncate block"
+                style="font-size: var(--course-size, ${certSettings.customCourseSize ?? 2.5}cqw); color: ${certSettings.customCourseColor ?? '#34d399'};"
+              >
+                ${courseTitle}
+              </span>
+            </div>
+
+            <p 
+              class="absolute left-1/2 -translate-x-1/2 w-[80%] leading-normal opacity-90 text-center"
+              style="top: ${certSettings.customMetaTop ?? 72}%; font-size: var(--meta-size, ${certSettings.customMetaSize ?? 1.0}cqw); color: ${certSettings.customMetaColor ?? '#64748b'};"
+            >
+              ${detailText}
+            </p>
+
+            <div 
+              class="absolute p-0.5 bg-white rounded flex items-center justify-center border border-slate-350"
+              style="top: ${certSettings.customQrTop ?? 78}%; left: ${certSettings.customQrLeft ?? 12}%; width: var(--qr-size, ${certSettings.customQrSize ?? 10}cqw); height: var(--qr-size, ${certSettings.customQrSize ?? 10}cqw);"
+            >
+              <img 
+                src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`${window.location.origin}?validate=${certificateId}`)}"
+                alt="QR Code"
+                class="w-full h-full object-contain"
+                referrerpolicy="no-referrer"
+              />
+            </div>
+
+            <div 
+              class="absolute w-[80%] left-1/2 -translate-x-1/2 grid grid-cols-2 gap-8 items-end"
+              style="top: ${certSettings.customSignaturesTop ?? 84}%; color: ${certSettings.customSignaturesColor ?? '#cbd5e1'};"
+            >
+              <div class="flex flex-col items-center">
+                <span class="font-serif italic leading-none truncate block max-w-full mb-0.5" style="font-size: var(--sig-init-size, ${(certSettings.customSignaturesSize ?? 1.1) * 0.9}cqw);">
+                  ${directorSignInitial}
+                </span>
+                <div class="h-[0.5px] w-full bg-slate-800/80"></div>
+                <span class="truncate max-w-full font-bold uppercase mt-1 leading-none font-mono" style="font-size: var(--sig-name-size, ${(certSettings.customSignaturesSize ?? 1.1) * 0.7}cqw);">
+                  ${certSettings.directorName}
+                </span>
+                <span class="text-slate-600 uppercase font-mono mt-0.5" style="font-size: var(--sig-title-size, ${(certSettings.customSignaturesSize ?? 1.1) * 0.5}cqw);">diretor(a) geral</span>
+              </div>
+
+              <div class="flex flex-col items-center">
+                <span class="font-serif italic leading-none truncate block max-w-full mb-0.5 text-emerald-300" style="font-size: var(--sig-init-size, ${(certSettings.customSignaturesSize ?? 1.1) * 0.9}cqw);">
+                  ${instructorAssigned}
+                </span>
+                <div class="h-[0.5px] w-full bg-slate-800/80"></div>
+                <span class="truncate max-w-full font-bold uppercase mt-1 leading-none font-mono" style="font-size: var(--sig-name-size, ${(certSettings.customSignaturesSize ?? 1.1) * 0.7}cqw);">
+                  ${instructorAssigned}
+                </span>
+                <span class="text-slate-600 uppercase font-mono mt-0.5" style="font-size: var(--sig-title-size, ${(certSettings.customSignaturesSize ?? 1.1) * 0.5}cqw);">médico(a) veterinário(a) - palestrante</span>
+              </div>
+            </div>
+
+            <div 
+              class="absolute bottom-2 left-0 w-full flex justify-between px-6 text-[0.45rem] font-mono text-slate-500 tracking-tighter"
+              style="font-size: var(--footnote-size, 0.45cqw);"
+            >
+              <span>Chave única: ${certificateId}</span>
+              <span>Emitido e outorgado em ${formattedDate}</span>
+              <span>Autenticação Digital Ativa</span>
+            </div>
+          </div>
+        </div>
+      `;
+    } else {
+      frontHtml = `
+        <div class="certificate-container bg-slate-950 border-8 border-double border-teal-500/30 p-8 sm:p-12 md:p-16 rounded-2xl relative overflow-hidden flex flex-col justify-between items-center text-center shadow-xl">
+          <div class="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_center,rgba(38,121,68,0.03)_0%,transparent_70%)] pointer-events-none"></div>
+          <div class="absolute -top-32 -left-32 w-64 h-64 border border-teal-500/5 rounded-full pointer-events-none"></div>
+          <div class="absolute -bottom-32 -right-32 w-64 h-64 border border-teal-500/5 rounded-full pointer-events-none"></div>
+          
+          <div class="space-y-4 relative z-10 w-full flex flex-col items-center text-center">
+            <div class="w-14 h-14 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-lg mb-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
+            </div>
+            
+            <h4 class="font-mono text-[10px] sm:text-xs uppercase tracking-widest text-[#ccdcd3] font-extrabold pr-1">
+              ${certSettings.institutionName}
+            </h4>
+            
+            <h1 class="font-display text-2xl sm:text-4xl md:text-5xl font-black tracking-tight text-white mt-1 border-b-2 border-emerald-500/20 pb-4 max-w-xl mx-auto uppercase">
+              ${certSettings.certificateTitle}
+            </h1>
+          </div>
+
+          <div class="my-8 sm:my-12 relative z-10 space-y-6 max-w-2xl mx-auto text-center">
+            <p class="font-mono text-xs sm:text-sm text-slate-400 uppercase tracking-wide">
+              Este certificado honorário é orgulhosamente outorgado a
+            </p>
+            
+            <h2 class="font-display text-xl sm:text-3xl md:text-4xl font-extrabold tracking-normal text-emerald-300 py-1 font-serif underline decoration-emerald-500/30 underline-offset-8">
+              ${studentName}
+            </h2>
+            
+            <p class="text-xs sm:text-sm text-slate-300 leading-relaxed max-w-xl mx-auto">
+              ${certSettings.textDescription}
+            </p>
+
+            <h3 class="font-display text-lg sm:text-2xl font-bold text-white tracking-wide bg-emerald-900/10 border border-slate-850 py-3 px-5 rounded-xl max-w-lg mx-auto">
+              ${courseTitle}
+            </h3>
+
+            <p class="text-[11px] sm:text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+              ${detailText}
+            </p>
+          </div>
+
+          <div class="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 items-end mt-4 pt-6 border-t border-slate-900/80 relative z-10">
+            <div class="flex flex-col items-center text-center space-y-1">
+              <span class="font-serif italic text-xs text-slate-400 border-none select-none">
+                ${directorSignInitial}
+              </span>
+              <div class="h-[1px] w-32 bg-slate-800"></div>
+              <span class="text-[9px] uppercase tracking-wider font-mono text-slate-500 font-bold">
+                ${certSettings.directorName}
+              </span>
+              <span class="text-[8px] text-slate-550">
+                Diretor(a) Geral
+              </span>
+            </div>
+
+            <div class="flex flex-col items-center justify-center shrink-0">
+              <div class="relative flex items-center justify-center w-16 h-16 rounded-full border border-emerald-500/20 bg-emerald-500/5 rotate-12">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#3bac6b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 11 2 2 4-4"/></svg>
+                <span class="absolute text-[6px] font-mono font-black text-emerald-400 tracking-tighter uppercase whitespace-nowrap">
+                  SNC • VERIFICADO • SNC • VERIFICADO
+                </span>
+              </div>
+              <span class="text-[8px] font-mono text-slate-500 mt-2 block tracking-widest leading-none">
+                REGISTRO N° ${certificateId.slice(3, 11)}
+              </span>
+            </div>
+
+            <div class="flex flex-col items-center justify-center space-y-1.5 border-none">
+              <div class="p-1 px-[5px] bg-white rounded-lg shadow-md border border-slate-800 shrink-0">
+                <img 
+                  src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`${window.location.origin}?validate=${certificateId}`)}"
+                  alt="QR Code"
+                  class="w-16 h-16"
+                  referrerpolicy="no-referrer"
+                />
+              </div>
+              <span class="text-[7px] font-mono text-slate-500 uppercase tracking-widest font-black leading-none">
+                Código QR de Validação
+              </span>
+            </div>
+
+            <div class="flex flex-col items-center text-center space-y-1">
+              <span class="font-serif italic text-xs text-emerald-200/80 border-none select-none">
+                ${instructorAssigned}
+              </span>
+              <div class="h-[1px] w-32 bg-slate-800"></div>
+              <span class="text-[9px] uppercase tracking-wider font-mono text-slate-500 font-bold">
+                ${instructorAssigned}
+              </span>
+              <span class="text-[8px] text-slate-550">
+                Médico(a) Veterinário(a) - Palestrante
+              </span>
+            </div>
+          </div>
+
+          <div class="mt-8 border-t border-slate-900/60 pt-4 w-full flex flex-col sm:flex-row justify-between items-center text-[9px] font-mono text-slate-500 gap-2">
+            <span>Emitido e outorgado em ${formattedDate}</span>
+            <span class="flex items-center gap-1">
+              <span>Chave de Verificação:</span>
+              <strong class="text-slate-400">${certificateId}</strong>
+            </span>
+            <span>Autenticação Digital Ativa</span>
+          </div>
+        </div>
+      `;
+    }
+
+    const backHtml = `
+      <div class="certificate-container bg-white text-[#090d16] border-[12px] border-double border-[rgba(9,13,22,0.4)] p-8 sm:p-12 md:p-16 rounded-2xl relative overflow-hidden flex flex-col justify-between items-center shadow-xl">
+        <div class="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.03)_0%,transparent_70%)] pointer-events-none"></div>
+        
+        <div class="w-full flex justify-between items-start border-b border-slate-250 pb-4 relative z-10 text-left animate-none">
+          <div>
+            <h4 class="font-mono text-[9px] sm:text-[11px] uppercase tracking-widest text-emerald-700 font-bold leading-none">
+              Syllabus Oficial & Validação de Carga Horária
+            </h4>
+            <h2 class="font-display font-black text-slate-900 text-base sm:text-lg md:text-xl mt-1.5 uppercase tracking-tight">
+              Grade Curricular Completa
+            </h2>
+            <p class="text-[10px] text-slate-500 mt-1">
+              Curso: <strong class="text-slate-800">${courseTitle}</strong>
+            </p>
+          </div>
+          
+          <div class="text-right">
+            <span class="font-mono text-[8px] text-slate-400 block">ID DO CERTIFICADO</span>
+            <span class="font-mono text-[10px] sm:text-xs font-bold text-slate-700 mr-1">${certificateId}</span>
+          </div>
+        </div>
+
+        <div class="w-full my-6 relative z-10 grow flex flex-col justify-center">
+          ${modulesHtml}
+        </div>
+
+        <div class="w-full grid grid-cols-1 sm:grid-cols-3 gap-4 items-center border-t border-slate-200 pt-4 relative z-10 text-left">
+          <div class="flex items-center gap-3">
+            <div class="p-1 bg-white rounded-lg border border-slate-200 shrink-0 shadow-sm">
+              <img 
+                src="https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent(`${window.location.origin}?validate=${certificateId}`)}"
+                alt="QR Code"
+                class="w-12 h-12"
+                referrerpolicy="no-referrer"
+              />
+            </div>
+            <div>
+              <span class="text-[7px] font-bold text-emerald-700 font-mono block tracking-wider uppercase">AUTENTICAÇÃO DIGITAL</span>
+              <p class="text-[8px] text-slate-550 mt-0.5 leading-normal">
+                Aponte a câmera do celular para este QR Code para verificar a validade do diploma online.
+              </p>
+            </div>
+          </div>
+
+          <div class="text-center flex flex-col justify-center">
+            <span class="font-mono text-[8px] text-slate-400 uppercase tracking-widest block font-bold">ALUNO(A) REGISTRADO(A)</span>
+            <span class="font-serif text-sm font-bold text-slate-800 mt-1 truncate block">${studentName}</span>
+            <span class="text-[8px] text-slate-400 mt-0.5">CPF e registro de curso validados digitalmente</span>
+          </div>
+
+          <div class="flex flex-col items-center sm:items-end justify-center">
+            <div class="flex items-center gap-1.5">
+              <div class="w-5 h-5 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-600">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 11 2 2 4-4"/></svg>
+              </div>
+              <span class="text-[8px] font-mono text-slate-700 font-bold uppercase tracking-wider">${certSettings.institutionName}</span>
+            </div>
+            <span class="text-[7px] font-mono text-slate-400 mt-1 block">Acreditação Autiva • ${formattedDate}</span>
+          </div>
+        </div>
+      </div>
+    `;
+
+    return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Certificado - ${studentName}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+            serif: ['Playfair Display', 'serif'],
+          },
+          colors: {
+            emerald: {
+              450: '#10b981',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @page {
+      size: landscape;
+      margin: 0;
+    }
+    @media print {
+      body {
+        background-color: transparent !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        display: block !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .page-break-container {
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        box-sizing: border-box !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        max-width: none !important;
+        max-height: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
+      .page-break-container-first {
+        page-break-after: always !important;
+        break-after: page !important;
+      }
+      .certificate-container {
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        margin: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        max-width: none !important;
+        max-height: none !important;
+        border: none !important;
+      }
+    }
+    body {
+      background-color: #0b0f19;
+      color: #f1f5f9;
+    }
+    .certificate-container {
+      aspect-ratio: 1.414 / 1;
+      width: 100%;
+      max-width: 1120px;
+      margin: 0 auto;
+      position: relative;
+    }
+    * {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+  </style>
+</head>
+<body class="p-4 md:p-8 font-sans flex flex-col items-center justify-center min-h-screen gap-6">
+  
+  <div class="page-break-container page-break-container-first w-full flex justify-center items-center py-4">
+    ${frontHtml}
+  </div>
+
+  <div class="page-break-container w-full flex justify-center items-center py-4">
+    ${backHtml}
+  </div>
+
+</body>
+</html>`;
+  };
+
   const handlePrint = () => {
-    window.print();
+    const htmlContent = getSingleCertificateHTML();
+    
+    // Create temporary hidden iframe
+    const iframe = document.createElement('iframe');
+    iframe.id = 'certificate-print-iframe';
+    iframe.style.position = 'fixed';
+    iframe.style.bottom = '0';
+    iframe.style.right = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    iframe.style.margin = '0';
+    iframe.style.padding = '0';
+    iframe.style.visibility = 'hidden';
+    
+    document.body.appendChild(iframe);
+    
+    const doc = iframe.contentWindow?.document || iframe.contentDocument;
+    if (!doc) {
+      console.error("Não foi possível acessar o documento do iframe de impressão");
+      return;
+    }
+    
+    doc.open();
+    doc.write(htmlContent);
+    doc.close();
+    
+    const printWindow = iframe.contentWindow;
+    if (printWindow) {
+      // Allow fonts and Tailwind to load inside the iframe
+      setTimeout(() => {
+        printWindow.focus();
+        printWindow.print();
+        setTimeout(() => {
+          const checkEl = document.getElementById('certificate-print-iframe');
+          if (checkEl) {
+            document.body.removeChild(checkEl);
+          }
+        }, 1500);
+      }, 800);
+    } else {
+      document.body.removeChild(iframe);
+    }
   };
 
   const handleShare = () => {
