@@ -182,8 +182,16 @@ function SafeVideoPlayer({ videoUrl, isEncrypted }: { videoUrl: string; isEncryp
               try {
                 var decodedSrc = atob("${encodedSrc}");
                 var container = document.getElementById("player-container");
+                var lowerSrc = decodedSrc.toLowerCase();
                 
-                if (decodedSrc.toLowerCase().endsWith('.mp4') || decodedSrc.toLowerCase().includes('.mp4?') || (!decodedSrc.includes('youtube.com') && !decodedSrc.includes('vimeo.com'))) {
+                var isDirectVideo = lowerSrc.endsWith('.mp4') || 
+                                    lowerSrc.includes('.mp4?') || 
+                                    lowerSrc.endsWith('.m3u8') || 
+                                    lowerSrc.includes('.m3u8?') || 
+                                    lowerSrc.endsWith('.webm') || 
+                                    lowerSrc.includes('.webm?');
+                
+                if (isDirectVideo) {
                   var video = document.createElement('video');
                   video.src = decodedSrc;
                   video.controls = true;
@@ -218,6 +226,7 @@ function SafeVideoPlayer({ videoUrl, isEncrypted }: { videoUrl: string; isEncryp
   if (!isEncrypted || !blobUrl) {
     const url = videoUrl.trim();
 
+    // 1. Is it a raw iframe embed code?
     if (url.toLowerCase().startsWith('<iframe') || url.toLowerCase().includes('<iframe')) {
       let cleanEmbed = url;
       if (cleanEmbed.includes('width=')) {
@@ -234,6 +243,22 @@ function SafeVideoPlayer({ videoUrl, isEncrypted }: { videoUrl: string; isEncryp
       );
     }
 
+    // 2. Is it a Bunny Stream URL?
+    const isBunnyStream = /mediadelivery\.net|bunny\.net|b-cdn\.net/i.test(url);
+    if (isBunnyStream) {
+      return (
+        <iframe
+          src={url}
+          title="Bunny Stream video player"
+          frameBorder="0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+          className="w-full h-full border-0"
+        />
+      );
+    }
+
+    // 3. Is it a YouTube URL?
     const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([^"&?\/\s]{11})/i;
     const ytMatch = url.match(youtubeRegex);
     if (ytMatch) {
@@ -250,6 +275,7 @@ function SafeVideoPlayer({ videoUrl, isEncrypted }: { videoUrl: string; isEncryp
       );
     }
 
+    // 4. Is it a Vimeo URL?
     const vimeoRegex = /(?:vimeo\.com\/|player\.vimeo\.com\/video\/)(\d+)/i;
     const vimeoMatch = url.match(vimeoRegex);
     if (vimeoMatch) {
