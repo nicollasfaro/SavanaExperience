@@ -113,6 +113,7 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
   const [isMeetScheduling, setIsMeetScheduling] = useState(false);
   const [meetError, setMeetError] = useState<string | null>(null);
   const [meetSuccess, setMeetSuccess] = useState<string | null>(null);
+  const [confirmDeleteLive, setConfirmDeleteLive] = useState(false);
 
   // Return empty state if teacher has no allocated Turmas
   if (allowedTurmas.length === 0) {
@@ -270,6 +271,34 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
       onUpdateCourses();
     } catch (err) {
       console.error("Erro ao excluir o módulo:", err);
+    }
+  };
+
+  const handleToggleLiveClassStatus = async (mod: CourseModule, activate: boolean) => {
+    try {
+      const updatedMod: CourseModule = {
+        ...mod,
+        isLive: activate ? (mod.liveDate ? true : false) : false,
+        isMeet: activate ? (mod.meetDateTime ? true : false) : false,
+        isLiveClass: true, // Keep it as a live class type
+      };
+      
+      // If activating but neither has dates, default to isLive = true to open the room
+      if (activate && !updatedMod.isLive && !updatedMod.isMeet) {
+        updatedMod.isLive = true;
+      }
+
+      await localDB.saveModule(updatedMod);
+      setModules(localDB.getModules());
+      onUpdateCourses();
+      
+      alert(activate 
+        ? "Aula ao vivo reativada com sucesso! Alunos poderão acessar a transmissão novamente." 
+        : "Aula encerrada com sucesso! Alunos agora têm presença registrada automaticamente e podem avançar para a conclusão do curso."
+      );
+    } catch (err) {
+      console.error("Failed to toggle live class status:", err);
+      alert("Ocorreu um erro ao alterar o status da aula ao vivo.");
     }
   };
 
@@ -627,6 +656,25 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
     }
   };
 
+  const handleDeleteLiveClass = async () => {
+    if (!selectedCourse) return;
+    try {
+      const updatedCourse = {
+        ...selectedCourse,
+        liveMeetLink: undefined,
+        liveClassDate: undefined
+      };
+      await localDB.saveCourse(updatedCourse);
+      onUpdateCourses();
+      setMeetSuccess("Agendamento de aula síncrona excluído com sucesso.");
+      setMeetError(null);
+      setConfirmDeleteLive(false);
+    } catch (err) {
+      console.error("Failed to delete live class:", err);
+      setMeetError("Falha ao excluir o agendamento da aula síncrona.");
+    }
+  };
+
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden">
       
@@ -964,9 +1012,13 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
                 onDragOver={handleDragOverModule}
                 onDrop={(e) => handleDropModule(e, mod.id)}
               >
-                {mod.isLive && (
-                  <div className="absolute top-0 right-0 bg-red-500/20 text-red-400 text-[10px] font-mono px-3 py-1 font-bold rounded-bl-xl uppercase tracking-wider animate-pulse border-l border-b border-red-500/30">
-                    🔴 Aula Ao Vivo
+                {(mod.isLiveClass || mod.isLive || mod.isMeet) && (
+                  <div className={`absolute top-0 right-0 text-[10px] font-mono px-3 py-1 font-bold rounded-bl-xl uppercase tracking-wider border-l border-b ${
+                    (mod.isLive || mod.isMeet)
+                      ? 'bg-red-500/20 text-red-400 border-red-500/30 animate-pulse'
+                      : 'bg-slate-800/60 text-slate-400 border-slate-700/50'
+                  }`}>
+                    {(mod.isLive || mod.isMeet) ? '🔴 Aula Ao Vivo Ativa' : '✓ Aula Encerrada'}
                   </div>
                 )}
                 
@@ -977,10 +1029,24 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
                     </h5>
                     <p className="text-xs text-slate-400 mt-1">{mod.description}</p>
                     
-                    {mod.isLive && mod.liveDate && (
-                      <p className="text-[11px] font-mono font-medium text-amber-400 mt-2 bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded inline-block">
-                        📅 Encontro Agendado: {new Date(mod.liveDate).toLocaleString('pt-BR')}
-                      </p>
+                    {(mod.isLiveClass || mod.isLive || mod.isMeet) && (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {(mod.liveDate || mod.meetDateTime) && (
+                          <p className="text-[11px] font-mono font-medium text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded inline-block">
+                            📅 Encontro Agendado: {new Date(mod.liveDate || mod.meetDateTime!).toLocaleString('pt-BR')}
+                          </p>
+                        )}
+                        {mod.isMeet && mod.meetLink && (
+                          <a 
+                            href={mod.meetLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[11px] font-mono font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded inline-flex items-center gap-1 hover:bg-emerald-500/20 transition"
+                          >
+                            <ExternalLink size={10} /> Link Teams
+                          </a>
+                        )}
+                      </div>
                     )}
                   </div>
                   <div className="flex items-center gap-1.5 bg-slate-900/40 p-1.5 rounded-lg border border-slate-800 shrink-0">
@@ -1005,7 +1071,7 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
                 <div className="mt-5 border-t border-slate-900/60 pt-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] uppercase font-mono tracking-wider text-slate-400">Conteúdos & Aulas Anexadas ({mod.lessons?.length || 0})</span>
-                    {!mod.isLive && (
+                    {!(mod.isLiveClass || mod.isLive || mod.isMeet) && (
                       <button
                         onClick={() => handleOpenAddLesson(mod)}
                         className="px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-md text-[10px] font-bold border border-emerald-500/20 flex items-center gap-1 transition"
@@ -1016,13 +1082,56 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
                     )}
                   </div>
                   
-                  {mod.isLive ? (
-                    <div className="bg-emerald-950/20 border border-emerald-500/10 rounded-xl p-4.5 text-left text-xs text-slate-350 leading-relaxed font-sans mt-2">
-                      <div className="flex items-center gap-2 mb-1.5 text-emerald-450 font-bold font-mono text-[10px] uppercase tracking-wider">
-                        <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping shrink-0" />
-                        Transmissão Virtual Ativa Sincronizada
+                  {(mod.isLiveClass || mod.isLive || mod.isMeet) ? (
+                    <div className="bg-slate-950/40 border border-slate-850 rounded-xl p-4 space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/50 p-4 rounded-xl border border-slate-800">
+                        <div className="space-y-1 text-left">
+                          <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-wider font-bold">
+                            {(mod.isLive || mod.isMeet) ? (
+                              <>
+                                <span className="w-2 h-2 bg-rose-500 rounded-full animate-ping" />
+                                <span className="text-rose-400">Aula Síncrona Ativa</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="w-2 h-2 bg-slate-500 rounded-full" />
+                                <span className="text-slate-400">Aula Finalizada / Encerrada</span>
+                              </>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-350 leading-relaxed">
+                            {(mod.isLive || mod.isMeet) 
+                              ? "A sala de aula virtual está ativa para receber os alunos agora." 
+                              : "Esta aula ao vivo foi finalizada. A presença dos alunos foi registrada."}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+                          {(mod.isLive || mod.isMeet) ? (
+                            <button
+                              onClick={() => handleToggleLiveClassStatus(mod, false)}
+                              className="px-3.5 py-1.5 bg-red-500 hover:bg-red-400 text-slate-950 font-black text-xs rounded-lg transition-all flex items-center gap-1.5 font-mono"
+                              title="Encerrar aula síncrona para liberar a conclusão do curso para os alunos"
+                            >
+                              <X size={13} />
+                              Encerrar Aula
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleToggleLiveClassStatus(mod, true)}
+                              className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-lg transition-all flex items-center gap-1.5 font-mono"
+                              title="Reativar aula síncrona para os alunos"
+                            >
+                              <Video size={13} />
+                              Reativar Aula
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      Este é um <strong className="text-slate-205">Módulo de Aula ao Vivo</strong>. Ele não contém aulas gravadas ou materiais de anexo estáticos. Os alunos terão acesso direto à transmissão virtual em tempo real através de um canal seguro no dia e horário agendados.
+
+                      <p className="text-[11px] text-slate-400 leading-normal text-left">
+                        Este é um <strong className="text-emerald-400">Módulo de Aula ao Vivo Síncrono</strong>. Ao encerrar a aula, você sinaliza ao sistema que os alunos concluíram esta etapa, permitindo que eles recebam seus pontos de presença e progridam para a emissão do certificado.
+                      </p>
                     </div>
                   ) : (!mod.lessons || mod.lessons.length === 0) ? (
                     <div className="text-center py-4 bg-slate-950/20 rounded-xl border border-dashed border-slate-850">
@@ -1176,15 +1285,48 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
                     </span>
                   </div>
                 </div>
-                <a
-                  href={selectedCourse.liveMeetLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-lg transition flex items-center gap-1.5 self-start sm:self-auto shrink-0"
-                >
-                  <ExternalLink size={13} />
-                  Entrar na transmissão (Teams)
-                </a>
+                <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap shrink-0 self-start sm:self-auto">
+                  {confirmDeleteLive ? (
+                    <div className="flex items-center gap-2 animate-fade-in bg-slate-900 border border-slate-800 p-1.5 rounded-xl">
+                      <span className="text-[9px] text-red-400 font-semibold uppercase tracking-wider px-1">Excluir?</span>
+                      <button
+                        type="button"
+                        onClick={handleDeleteLiveClass}
+                        className="px-2.5 py-1 bg-red-500 hover:bg-red-400 text-slate-950 font-bold text-[10px] rounded-lg transition"
+                      >
+                        Sim
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteLive(false)}
+                        className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-[10px] rounded-lg transition"
+                      >
+                        Não
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteLive(true)}
+                        className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition flex items-center gap-1.5 border border-red-500/20 text-xs font-bold"
+                        title="Excluir aula ao vivo"
+                      >
+                        <Trash2 size={13} />
+                        Excluir
+                      </button>
+                      <a
+                        href={selectedCourse.liveMeetLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-lg transition flex items-center gap-1.5 shrink-0"
+                      >
+                        <ExternalLink size={13} />
+                        Entrar na transmissão (Teams)
+                      </a>
+                    </>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="mt-5 p-4 bg-slate-950/60 border border-slate-850 rounded-xl text-center">
