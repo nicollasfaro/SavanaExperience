@@ -715,14 +715,14 @@ Pronto! Você obterá um arquivo PDF de alta definição, com imagens nítidas, 
           }
           html, body {
             width: 100% !important;
-            height: auto !important;
+            height: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
             background: transparent !important;
             overflow: visible !important;
           }
           body {
-            min-height: 0 !important;
+            min-height: 100% !important;
             display: block !important;
           }
           body * {
@@ -787,7 +787,7 @@ Pronto! Você obterá um arquivo PDF de alta definição, com imagens nítidas, 
             position: absolute !important;
             left: 0 !important;
             top: 0 !important;
-            width: 100vw !important;
+            width: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
             display: block !important;
@@ -799,10 +799,10 @@ Pronto! Você obterá um arquivo PDF de alta definição, com imagens nítidas, 
             flex-direction: column !important;
             justify-content: space-between !important;
             box-sizing: border-box !important;
-            width: 100vw !important;
-            height: 100vh !important;
-            max-width: none !important;
-            max-height: none !important;
+            width: 100% !important;
+            height: 100% !important;
+            max-width: 100% !important;
+            max-height: 100% !important;
             margin: 0 !important;
             page-break-inside: avoid !important;
             break-inside: avoid !important;
@@ -837,21 +837,21 @@ Pronto! Você obterá um arquivo PDF de alta definição, com imagens nítidas, 
             padding: ${certSettings.useCustomLayout ? '0' : '3.5rem'} !important;
             background-color: ${certSettings.useCustomLayout ? 'transparent' : '#020617'} !important;
             border: none !important;
-
-            /* Override container query units with viewport widths (vw) on print so printing engines scale text perfectly */
-            --inst-size: ${(certSettings.customInstitutionSize ?? 1.2) * 0.95}vw !important;
-            --title-size: ${(certSettings.customTitleSize ?? 3.5) * 0.95}vw !important;
-            --recipient-size: ${(certSettings.customRecipientSize ?? 2.2) * 0.9}vw !important;
-            --recipient-sub-size: ${(certSettings.customRecipientSize ?? 2.2) * 0.4}vw !important;
-            --desc-size: ${(certSettings.customTextSize ?? 1.2) * 0.8}vw !important;
-            --course-size: ${(certSettings.customCourseSize ?? 2.5) * 0.82}vw !important;
-            --meta-size: ${(certSettings.customMetaSize ?? 1.0) * 0.85}vw !important;
-            --signatures-size: ${certSettings.customSignaturesSize ?? 1.1}vw !important;
-            --qr-size: ${certSettings.customQrSize ?? 10}vw !important;
-            --sig-init-size: ${(certSettings.customSignaturesSize ?? 1.1) * 0.9}vw !important;
-            --sig-name-size: ${(certSettings.customSignaturesSize ?? 1.1) * 0.7}vw !important;
-            --sig-title-size: ${(certSettings.customSignaturesSize ?? 1.1) * 0.5}vw !important;
-            --footnote-size: 0.45vw !important;
+ 
+            /* Use container query width (cqw) so variables resize proportionally within the printable area container */
+            --inst-size: ${(certSettings.customInstitutionSize ?? 1.2) * 0.95}cqw !important;
+            --title-size: ${(certSettings.customTitleSize ?? 3.5) * 0.95}cqw !important;
+            --recipient-size: ${(certSettings.customRecipientSize ?? 2.2) * 0.9}cqw !important;
+            --recipient-sub-size: ${(certSettings.customRecipientSize ?? 2.2) * 0.4}cqw !important;
+            --desc-size: ${(certSettings.customTextSize ?? 1.2) * 0.8}cqw !important;
+            --course-size: ${(certSettings.customCourseSize ?? 2.5) * 0.82}cqw !important;
+            --meta-size: ${(certSettings.customMetaSize ?? 1.0) * 0.85}cqw !important;
+            --signatures-size: ${certSettings.customSignaturesSize ?? 1.1}cqw !important;
+            --qr-size: ${certSettings.customQrSize ?? 10}cqw !important;
+            --sig-init-size: ${(certSettings.customSignaturesSize ?? 1.1) * 0.9}cqw !important;
+            --sig-name-size: ${(certSettings.customSignaturesSize ?? 1.1) * 0.7}cqw !important;
+            --sig-title-size: ${(certSettings.customSignaturesSize ?? 1.1) * 0.5}cqw !important;
+            --footnote-size: 0.45cqw !important;
           }
           .batch-certificate-front * {
             -webkit-print-color-adjust: exact !important;
