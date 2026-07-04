@@ -40,7 +40,13 @@ export function CertificateModal({
     const existing = list.find((c: IssuedCertificate) => c.courseId === courseId);
 
     if (existing) {
-      setCert(existing);
+      if (existing.userName !== studentName) {
+        const updatedCert = { ...existing, userName: studentName };
+        localDB.saveIssuedCertificate(updatedCert);
+        setCert(updatedCert);
+      } else {
+        setCert(existing);
+      }
     } else {
       // Create a unique, once-and-for-all Certificate object
       const issueDate = new Date();

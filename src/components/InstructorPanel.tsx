@@ -6,7 +6,8 @@
 import React, { useState, useEffect } from 'react';
 import { Course, CourseModule, LeaderboardUser, Turma, Lesson, QuizQuestion } from '../types';
 import { localDB, getCachedAccessToken, signInWithGmail } from '../firebase';
-import { BookOpen, Users, Award, TrendingUp, Plus, Edit, Trash2, CloudLightning, Calendar, Download, AlertCircle, Video, Key, Lock, Loader2, CheckCircle, ExternalLink, X, Search } from 'lucide-react';
+import { BookOpen, Users, Award, TrendingUp, Plus, Edit, Trash2, CloudLightning, Calendar, Download, AlertCircle, Video, Key, Lock, Loader2, CheckCircle, ExternalLink, X, Search, Printer } from 'lucide-react';
+import { BatchCertificateModal } from './BatchCertificateModal';
 
 interface InstructorPanelProps {
   currentUserId: string;
@@ -105,6 +106,7 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
   // Student list & actions states (moved up to satisfy Rules of Hooks)
   const [studentToRemove, setStudentToRemove] = useState<LeaderboardUser | null>(null);
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
+  const [showBatchCertModal, setShowBatchCertModal] = useState(false);
   const [studentSearchTerm, setStudentSearchTerm] = useState('');
   const [selectedStudentIdsToAdd, setSelectedStudentIdsToAdd] = useState<string[]>([]);
 
@@ -880,6 +882,15 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
                   >
                     <Download size={11} />
                     Exportar CSV
+                  </button>
+                  <button 
+                    onClick={() => setShowBatchCertModal(true)}
+                    disabled={classStudents.length === 0}
+                    className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 rounded-xl text-[10px] font-semibold transition disabled:opacity-50 disabled:hover:bg-amber-500/10 disabled:cursor-not-allowed"
+                    title="Gerar e baixar todos os certificados da turma de uma vez"
+                  >
+                    <Award size={11} />
+                    Certificados em Lote
                   </button>
                 </div>
               </div>
@@ -2056,6 +2067,20 @@ export function InstructorPanel({ currentUserId, isSystemAdmin = false, courses,
             </div>
           </div>
         </div>
+      )}
+
+      {selectedTurma && (
+        <BatchCertificateModal
+          isOpen={showBatchCertModal}
+          onClose={() => setShowBatchCertModal(false)}
+          turma={selectedTurma}
+          students={classStudents}
+          courseTitle={selectedCourse?.title || "Curso de Especialização"}
+          courseId={selectedCourseId}
+          duration={selectedCourse?.totalDuration || "40 horas"}
+          xpReward={selectedCourse?.xpReward || 500}
+          instructorName={selectedCourse?.instructorName || "Coordenador Docente"}
+        />
       )}
 
     </div>
