@@ -1147,21 +1147,6 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
           Pré-Registro WhatsApp
         </button>
 
-        <button
-          id="btn-clean-mock-users"
-          onClick={async () => {
-             const mockUserIds = ['user-2', 'user-3', 'user-4', 'user-5', 'user-6', 'current-user-id'];
-             for (const mid of mockUserIds) {
-               await localDB.deleteUser(mid);
-             }
-             alert("Usuários simulados antigos (user-2 a user-6 e o usuário mock padrão) foram limpos do banco de dados.");
-          }}
-          className="flex items-center gap-1.5 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-red-400 bg-red-500/10 hover:bg-red-500/20 rounded-lg border border-red-500/20 transition ml-auto"
-        >
-          <Trash2 size={12} />
-          Limpar Usuários Simulados
-        </button>
-
       </div>
 
       {/* TAB 1: USER LISTING VIEW */}
