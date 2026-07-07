@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { Course } from '../types';
-import { Star, GraduationCap, Clock, Award, MessageCircle, Share2, Twitter, Linkedin, Link, Check } from 'lucide-react';
+import { GraduationCap, Clock, Award, MessageCircle, Share2, Twitter, Linkedin, Link, Check } from 'lucide-react';
 
 interface CourseCardProps {
   key?: string;
@@ -98,10 +98,6 @@ export function CourseCard({ course, isRegistered, onSelect, onEnroll }: CourseC
               {course.enrolledCount} alunos
             </span>
           )}
-          <span className="flex items-center gap-0.5 text-amber-400 font-medium">
-            <Star size={13} className="fill-amber-400" />
-            {course.rating.toFixed(1)}
-          </span>
         </div>
 
         {/* Real Dynamic course format description banner */}
