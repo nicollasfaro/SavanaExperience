@@ -8,7 +8,8 @@ import { localDB, uploadCourseThumbnail, auth, db, handleFirestoreError, Operati
 import { 
   Shield, User, UserCheck, UserX, Search, Mail, Award, Sparkles, Filter,
   Plus, Edit, Trash2, Calendar, BookOpen, Layers, Users, Upload, Image, Loader2,
-  Database, RefreshCw, CheckCircle2, AlertCircle, AlertTriangle, X, FileText, UserPlus, Send, Save, Download
+  Database, RefreshCw, CheckCircle2, AlertCircle, AlertTriangle, X, FileText, UserPlus, Send, Save, Download,
+  MoreVertical, ChevronDown
 } from 'lucide-react';
 import { CertificateSettingsPanel } from './CertificateSettingsPanel';
 
@@ -120,6 +121,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
   const [testEmail, setTestEmail] = useState('');
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [prePage, setPrePage] = useState(1);
+  const [activePreRegDropdownId, setActivePreRegDropdownId] = useState<string | null>(null);
   const ITEMS_PER_PAGE_PRE = 10;
 
   // Toast notifications for a smooth experience without blocking alerts
@@ -2810,25 +2812,58 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                               )}
                             </td>
                             <td className="py-3 px-3 text-right">
-                              <div className="flex items-center justify-end gap-1.5">
-                                {!p.used && (
+                              <div className="flex items-center justify-end">
+                                <div className="relative inline-block text-left">
                                   <button
+                                    id={`btn-actions-${p.id}`}
                                     type="button"
-                                    onClick={() => handleSendSingleEmail(p)}
-                                    className="p-1 px-2.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/25 text-blue-400 hover:text-blue-350 font-bold text-[10px] border border-blue-500/20 transition cursor-pointer flex items-center gap-1 shrink-0"
-                                    title="Disparar e-mail de lembrete personalizado individual de cobrança"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActivePreRegDropdownId(activePreRegDropdownId === p.id ? null : p.id);
+                                    }}
+                                    className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-850 font-semibold text-[10px] transition flex items-center gap-1 cursor-pointer"
                                   >
-                                    <Mail size={12} className="shrink-0" />
-                                    <span>Cobrar Aluno</span>
+                                    <span>Ações</span>
+                                    <ChevronDown size={10} className={`transition-transform duration-200 ${activePreRegDropdownId === p.id ? 'rotate-180' : ''}`} />
                                   </button>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeletePreRegistration(p.id)}
-                                  className="p-1 px-2.5 rounded-lg hover:bg-red-500/10 text-red-400 hover:text-red-350 font-bold text-[10px] border border-transparent hover:border-red-500/20 transition cursor-pointer"
-                                >
-                                  Revogar
-                                </button>
+
+                                  {activePreRegDropdownId === p.id && (
+                                    <>
+                                      {/* Backdrop overlay to catch click and close dropdown */}
+                                      <div 
+                                        className="fixed inset-0 z-40 cursor-default" 
+                                        onClick={() => setActivePreRegDropdownId(null)} 
+                                      />
+                                      
+                                      <div className="absolute right-0 mt-1.5 w-36 rounded-xl bg-slate-950 border border-slate-800 shadow-xl z-50 py-1 animate-fade-in text-left">
+                                        {!p.used && (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              handleSendSingleEmail(p);
+                                              setActivePreRegDropdownId(null);
+                                            }}
+                                            className="w-full text-left px-3 py-1.5 text-[10px] font-bold text-blue-400 hover:text-blue-300 hover:bg-slate-900/60 transition flex items-center gap-1.5"
+                                          >
+                                            <Mail size={12} className="shrink-0 text-blue-400" />
+                                            <span>Cobrar Aluno</span>
+                                          </button>
+                                        )}
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            handleDeletePreRegistration(p.id);
+                                            setActivePreRegDropdownId(null);
+                                          }}
+                                          className="w-full text-left px-3 py-1.5 text-[10px] font-bold text-red-400 hover:text-red-300 hover:bg-slate-900/60 transition flex items-center gap-1.5"
+                                        >
+                                          <Trash2 size={12} className="shrink-0 text-red-400" />
+                                          <span>Revogar</span>
+                                        </button>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
                               </div>
                             </td>
                           </tr>
