@@ -428,16 +428,22 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
   };
 
   // Submit/Save Course CRUD
-  const handleSaveCourse = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!courseTitle.trim() || !courseCategory.trim() || !courseInstructorName.trim()) {
-      showToast("Por favor preencha todos os campos obrigatórios.", "error");
+  const saveCourseData = async (isDraft: boolean) => {
+    if (!courseTitle.trim()) {
+      showToast("Por favor, preencha pelo menos o Título do Curso para salvar.", "error");
       return;
     }
 
-    if (courseSaleType === 'whatsapp' && !courseWhatsappNumber.trim()) {
-      showToast("Por favor preencha o número de celular do WhatsApp.", "error");
-      return;
+    if (!isDraft) {
+      if (!courseCategory.trim() || !courseInstructorName.trim()) {
+        showToast("Por favor preencha todos os campos obrigatórios (Categoria e Docente).", "error");
+        return;
+      }
+
+      if (courseSaleType === 'whatsapp' && !courseWhatsappNumber.trim()) {
+        showToast("Por favor preencha o número de celular do WhatsApp.", "error");
+        return;
+      }
     }
 
     const savedId = modalCourseId || (editingCourse ? editingCourse.id : `course-${Date.now()}`);
@@ -446,8 +452,8 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
       type: courseType,
       title: courseTitle,
       description: courseDescription || '',
-      category: courseCategory,
-      instructorName: courseInstructorName,
+      category: courseCategory || 'Geral',
+      instructorName: courseInstructorName || 'Equipe Savana Experience',
       thumbnail: courseThumbnail || 'https://images.unsplash.com/photo-1576091160550-2173dba999ef?w=600&auto=format&fit=crop&q=80',
       price: Number(coursePrice) || 0,
       xpReward: Number(courseXpReward) || 1000,
@@ -455,7 +461,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
       modulesCount: editingCourse ? (editingCourse.modulesCount || 0) : 0,
       enrolledCount: editingCourse ? (editingCourse.enrolledCount || 0) : 0,
       rating: editingCourse ? (editingCourse.rating || 4.8) : 4.8,
-      isPublished: courseIsPublished,
+      isPublished: isDraft ? false : courseIsPublished,
       format: courseFormat || 'online',
       saleType: courseSaleType,
       whatsappNumber: courseSaleType === 'whatsapp' ? courseWhatsappNumber : '',
@@ -471,7 +477,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
 
     try {
       await localDB.saveCourse(newCourse);
-      showToast(editingCourse ? "Curso atualizado com sucesso!" : "Curso criado com sucesso!");
+      showToast(editingCourse ? "Curso atualizado com sucesso!" : (isDraft ? "Rascunho de curso salvo com sucesso!" : "Curso criado com sucesso!"));
     } catch (err) {
       console.error(err);
       showToast("Erro ao sincronizar as alterações do curso com o banco de dados.", "error");
@@ -479,6 +485,15 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
       setShowCourseModal(false);
       setEditingCourse(null);
     }
+  };
+
+  const handleSaveCourse = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await saveCourseData(false);
+  };
+
+  const handleSaveDraft = async () => {
+    await saveCourseData(true);
   };
 
   // 4. Rewards Handlers
@@ -1531,7 +1546,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
             ) : (
               filteredCourses.map((c) => {
                 return (
-                  <div key={c.id} id={`course-mgmt-item-${c.id}`} className="bg-slate-950/40 border border-slate-850 p-5 rounded-2xl hover:border-blue-500/30 transition-all duration-300 flex flex-col justify-between relative group">
+                  <div key={c.id} id={`course-mgmt-item-${c.id}`} className={`bg-slate-950/40 border p-5 rounded-2xl hover:border-blue-500/30 transition-all duration-300 flex flex-col justify-between relative group ${c.isPublished ? 'border-slate-850' : 'border-amber-500/20 bg-amber-955/5 shadow-inner shadow-amber-500/5'}`}>
                     <div>
                       {/* Badge and Title */}
                       <div className="flex items-start justify-between gap-2 mb-2">
@@ -1544,7 +1559,8 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                               Publicado
                             </span>
                           ) : (
-                            <span className="text-[9px] uppercase font-mono bg-slate-850 text-slate-400 border border-slate-800 px-1.5 py-0.5 rounded font-bold">
+                            <span className="text-[9px] uppercase font-mono bg-amber-500/10 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded font-bold flex items-center gap-1">
+                              <span className="w-1 h-1 rounded-full bg-amber-400 animate-pulse" />
                               Rascunho
                             </span>
                           )}
@@ -2220,6 +2236,14 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                   className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-850 hover:bg-slate-800 text-slate-300 transition"
                 >
                   Cancelar
+                </button>
+                <button
+                  id="modal-course-draft-btn"
+                  type="button"
+                  onClick={handleSaveDraft}
+                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-750 text-amber-400 border border-slate-700 hover:border-slate-600 transition"
+                >
+                  Salvar Rascunho
                 </button>
                 <button
                   id="modal-course-save-btn"

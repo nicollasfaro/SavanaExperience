@@ -466,10 +466,7 @@ export default function App() {
   }, [localRegistrations, turmas, currentUserId]);
   
   const computedCourses = React.useMemo(() => {
-    let list = courses;
-    if (currentUserRole !== 'instructor') {
-      list = list.filter(course => course.isPublished !== false);
-    }
+    let list = courses.filter(course => course.isPublished !== false);
     return list.map(course => {
       // 1. Calculate Real Duration
       const courseMods = modules.filter(m => m.courseId === course.id);
