@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Reward, Redemption } from '../types';
 import { localDB } from '../firebase';
-import { Gift, Award, CheckCircle2, AlertCircle, X } from 'lucide-react';
+import { Gift, Award, CheckCircle2, AlertCircle, X, Copy, Check } from 'lucide-react';
 
 interface StoreProps {
   currentUserId: string;
@@ -14,6 +14,19 @@ export function Store({ currentUserId, rewards, userXp, onRedeem }: StoreProps) 
   const [redeemingId, setRedeemingId] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [rewardToRedeem, setRewardToRedeem] = useState<Reward | null>(null);
+  const [userRedemptions, setUserRedemptions] = useState<Redemption[]>([]);
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+
+  const loadRedemptions = () => {
+    const all = localDB.getRedemptions();
+    const mine = all.filter(r => r.userId === currentUserId);
+    mine.sort((a, b) => new Date(b.redeemedAt).getTime() - new Date(a.redeemedAt).getTime());
+    setUserRedemptions(mine);
+  };
+
+  useEffect(() => {
+    loadRedemptions();
+  }, [currentUserId]);
 
   const handleRedeemClick = (reward: Reward) => {
     if (userXp < reward.xpCost) {
@@ -23,6 +36,12 @@ export function Store({ currentUserId, rewards, userXp, onRedeem }: StoreProps) 
     setRewardToRedeem(reward);
   };
 
+  const handleCopyCode = (code: string) => {
+    navigator.clipboard.writeText(code);
+    setCopiedCode(code);
+    setTimeout(() => setCopiedCode(null), 2000);
+  };
+
   const handleRedeemConfirm = async () => {
     if (!rewardToRedeem) return;
     const reward = rewardToRedeem;
@@ -30,12 +49,20 @@ export function Store({ currentUserId, rewards, userXp, onRedeem }: StoreProps) 
     setRedeemingId(reward.id);
     
     try {
+      let couponCode: string | undefined = undefined;
+      if (reward.isCoupon) {
+        const randomStr = Math.random().toString(36).substring(2, 8).toUpperCase();
+        couponCode = `SAVANA-${reward.discountPercentage || 10}OFF-${randomStr}`;
+      }
+
       const newRedemption: Redemption = {
         id: `red-${Date.now()}`,
         userId: currentUserId,
         rewardId: reward.id,
         redeemedAt: new Date().toISOString(),
-        status: 'pending'
+        status: reward.isCoupon ? 'delivered' : 'pending',
+        couponCode,
+        discountPercentage: reward.isCoupon ? reward.discountPercentage : undefined
       };
       
       await localDB.saveRedemption(newRedemption);
@@ -43,15 +70,21 @@ export function Store({ currentUserId, rewards, userXp, onRedeem }: StoreProps) 
       // deduct XP
       await localDB.updateLeaderboardXP(currentUserId, -reward.xpCost);
       
-      setSuccessMsg(`"${reward.title}" resgatado com sucesso! Entraremos em contato.`);
+      if (reward.isCoupon && couponCode) {
+        setSuccessMsg(`Cupom de ${reward.discountPercentage}% OFF resgatado com sucesso! Código: ${couponCode}`);
+      } else {
+        setSuccessMsg(`"${reward.title}" resgatado com sucesso! Entraremos em contato.`);
+      }
+      
       onRedeem(); // refresh external states if needed
+      loadRedemptions(); // refresh our local redemptions history
       
     } catch (err) {
       console.error(err);
       alert("Erro ao realizar o resgate.");
     } finally {
       setRedeemingId(null);
-      setTimeout(() => setSuccessMsg(null), 4000);
+      setTimeout(() => setSuccessMsg(null), 8000);
     }
   };
 
@@ -74,9 +107,11 @@ export function Store({ currentUserId, rewards, userXp, onRedeem }: StoreProps) 
       </div>
 
       {successMsg && (
-        <div className="bg-blue-500/10 border border-blue-500/20 text-blue-400 px-4 py-3 rounded-xl flex items-center gap-2">
-          <CheckCircle2 size={16} />
-          {successMsg}
+        <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-4 py-4 rounded-2xl flex items-start sm:items-center gap-3 shadow-lg shadow-emerald-500/5 animate-fade-in">
+          <CheckCircle2 size={18} className="shrink-0 mt-0.5 sm:mt-0 text-emerald-400" />
+          <div className="flex-1 text-xs sm:text-sm font-semibold">
+            {successMsg}
+          </div>
         </div>
       )}
 
@@ -99,6 +134,11 @@ export function Store({ currentUserId, rewards, userXp, onRedeem }: StoreProps) 
                     <Award size={10} />
                     {reward.xpCost} XP
                   </div>
+                  {reward.isCoupon && (
+                    <div className="absolute bottom-2 left-2 bg-amber-550 border border-amber-400/30 text-amber-950 px-2.5 py-0.5 rounded-full font-sans text-[10px] font-bold shadow-lg">
+                      CUPOM {reward.discountPercentage}% OFF
+                    </div>
+                  )}
                 </div>
                 
                 <h3 className="text-lg font-bold text-slate-200 mb-2">{reward.title}</h3>
@@ -120,6 +160,91 @@ export function Store({ currentUserId, rewards, userXp, onRedeem }: StoreProps) 
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* User Redemptions History */}
+      {userRedemptions.length > 0 && (
+        <div className="mt-12 space-y-4 pt-8 border-t border-slate-800">
+          <h3 className="text-lg font-display font-bold text-slate-200 flex items-center gap-2">
+            <Gift size={18} className="text-amber-455" />
+            Meus Resgates & Cupons
+          </h3>
+          <p className="text-xs text-slate-400">
+            Abaixo estão os cupons que você já resgatou. Você pode copiar o código do cupom a qualquer momento para usar no checkout.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {userRedemptions.map(red => {
+              const reward = rewards.find(r => r.id === red.rewardId);
+              const formattedDate = new Date(red.redeemedAt).toLocaleDateString('pt-BR', {
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              });
+
+              return (
+                <div key={red.id} className="bg-slate-900 border border-slate-800/80 p-4 rounded-2xl flex items-center gap-4 hover:border-slate-700/80 transition shadow-md">
+                  {/* Thumbnail / Icon */}
+                  <div className="w-12 h-12 rounded-xl bg-slate-950 overflow-hidden shrink-0 border border-slate-800 flex items-center justify-center">
+                    {reward ? (
+                      <img src={reward.imageUrl} alt={reward.title} className="w-full h-full object-cover" />
+                    ) : (
+                      <Gift size={20} className="text-slate-600" />
+                    )}
+                  </div>
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-xs sm:text-sm font-bold text-slate-200 truncate">
+                      {reward ? reward.title : 'Prêmio Excluído'}
+                    </h4>
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      Resgatado em: {formattedDate}
+                    </span>
+
+                    {/* Status or Coupon Code display */}
+                    {red.couponCode ? (
+                      <div className="mt-2 flex items-center gap-2">
+                        <div className="bg-slate-950 border border-slate-800 px-2.5 py-1 rounded-lg flex items-center justify-between gap-2 max-w-[220px] w-full">
+                          <span className="font-mono text-[11px] text-amber-400 font-bold tracking-wider truncate">
+                            {red.couponCode}
+                          </span>
+                          <button
+                            onClick={() => handleCopyCode(red.couponCode!)}
+                            className="text-slate-400 hover:text-slate-200 transition shrink-0 p-1 rounded hover:bg-slate-900"
+                            title="Copiar código"
+                          >
+                            {copiedCode === red.couponCode ? (
+                              <Check size={12} className="text-emerald-400" />
+                            ) : (
+                              <Copy size={12} />
+                            )}
+                          </button>
+                        </div>
+                        {copiedCode === red.couponCode && (
+                          <span className="text-[9px] font-semibold text-emerald-400 animate-fade-in">Copiado!</span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="mt-1">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold ${
+                          red.status === 'delivered' 
+                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                            : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                        }`}>
+                          <span className="w-1 h-1 rounded-full bg-current" />
+                          {red.status === 'delivered' ? 'Entregue' : 'Pendente'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -157,9 +282,15 @@ export function Store({ currentUserId, rewards, userXp, onRedeem }: StoreProps) 
                 </div>
               </div>
 
-              <p className="text-xs text-slate-350 leading-relaxed max-w-xs mx-auto">
-                Confirmar o resgate de <strong className="text-slate-200">"{rewardToRedeem.title}"</strong>? Esta pontuação de XP será deduzida da sua carteira.
-              </p>
+              {rewardToRedeem.isCoupon ? (
+                <p className="text-xs text-slate-350 leading-relaxed max-w-xs mx-auto">
+                  Deseja resgatar este <strong className="text-amber-400">Cupom de Desconto de {rewardToRedeem.discountPercentage}%</strong>? Um código promocional exclusivo será gerado instantaneamente para você!
+                </p>
+              ) : (
+                <p className="text-xs text-slate-350 leading-relaxed max-w-xs mx-auto">
+                  Confirmar o resgate de <strong className="text-slate-200">"{rewardToRedeem.title}"</strong>? Esta pontuação de XP será deduzida da sua carteira.
+                </p>
+              )}
             </div>
 
             <div className="p-4 border-t border-slate-800 flex items-center justify-end gap-3 bg-slate-950/50">

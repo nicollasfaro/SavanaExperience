@@ -4,13 +4,15 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { localDB } from '../firebase';
-import { LeaderboardUser, Badge, ForumThread } from '../types';
+import { localDB, db } from '../firebase';
+import { LeaderboardUser, Badge, ForumThread, Course, CourseModule, StudentProgress } from '../types';
 import { ALL_BADGES } from '../data';
 import { 
   X, Award, Zap, BookOpen, MessageSquareText, GraduationCap, 
-  UserPlus, UserMinus, Flame, Sparkles, Calendar, Heart, MessageSquare
+  UserPlus, UserMinus, Flame, Sparkles, Calendar, Heart, MessageSquare,
+  CheckCircle2
 } from 'lucide-react';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 interface UserProfileModalProps {
   userId: string;
@@ -22,14 +24,103 @@ interface UserProfileModalProps {
 export function UserProfileModal({ userId, isOpen, onClose, currentUserId }: UserProfileModalProps) {
   const [allUsers, setAllUsers] = useState<LeaderboardUser[]>([]);
   const [socialFeed, setSocialFeed] = useState<ForumThread[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [modules, setModules] = useState<CourseModule[]>([]);
+  const [userProgressList, setUserProgressList] = useState<StudentProgress[]>([]);
+  const [enrolledCourseIds, setEnrolledCourseIds] = useState<string[]>([]);
+  const [loadingCourses, setLoadingCourses] = useState(true);
 
   // Load and sync database real-time updates
   useEffect(() => {
     if (!isOpen) return;
     
-    const syncData = () => {
+    const syncData = async () => {
       setAllUsers(localDB.getLeaderboard());
       setSocialFeed(localDB.getForumThreads());
+      
+      const loadedCourses = localDB.getCourses();
+      const loadedModules = localDB.getModules();
+      setCourses(loadedCourses);
+      setModules(loadedModules);
+
+      setLoadingCourses(true);
+      try {
+        // Query progress for this user from Firestore
+        const progressSnap = await getDocs(query(collection(db, 'progress'), where('userId', '==', userId)));
+        const fetchedProgress: StudentProgress[] = [];
+        progressSnap.forEach((d) => {
+          fetchedProgress.push(d.data() as StudentProgress);
+        });
+
+        // Query payments for this user from Firestore to get enrolled course IDs
+        const paymentsSnap = await getDocs(query(collection(db, 'payments'), where('userId', '==', userId)));
+        const fetchedPaymentsCourseIds: string[] = [];
+        paymentsSnap.forEach((d) => {
+          const p = d.data();
+          if (p.courseId) {
+            fetchedPaymentsCourseIds.push(p.courseId);
+          }
+        });
+
+        // Combine with Turmas where user is student
+        const turmasEnrolledIds = localDB.getTurmas()
+          .filter(t => t.studentIds?.includes(userId))
+          .map(t => t.courseId);
+
+        // Fallback for self profile
+        let localRegs: string[] = [];
+        let localProgs: StudentProgress[] = [];
+        if (userId === currentUserId) {
+          localRegs = localDB.getRegistrations();
+          localProgs = localDB.getProgress(currentUserId);
+        }
+
+        const combinedCourseIds = Array.from(new Set([
+          ...fetchedPaymentsCourseIds,
+          ...turmasEnrolledIds,
+          ...localRegs,
+          ...fetchedProgress.map(p => p.courseId)
+        ]));
+
+        const combinedProgress = [
+          ...fetchedProgress
+        ];
+        // Merge with localProgs if self and not already in combinedProgress
+        localProgs.forEach(lp => {
+          if (!combinedProgress.some(cp => cp.courseId === lp.courseId)) {
+            combinedProgress.push(lp);
+          }
+        });
+
+        setUserProgressList(combinedProgress);
+        setEnrolledCourseIds(combinedCourseIds);
+      } catch (err) {
+        console.error("Error loading user profile details from Firestore:", err);
+        // Fallback to local if something goes wrong
+        const turmasEnrolledIds = localDB.getTurmas()
+          .filter(t => t.studentIds?.includes(userId))
+          .map(t => t.courseId);
+        
+        let localRegs: string[] = [];
+        let localProgs: StudentProgress[] = [];
+        if (userId === currentUserId) {
+          localRegs = localDB.getRegistrations();
+          localProgs = localDB.getProgress(currentUserId);
+        } else {
+          localProgs = localDB.getProgress(userId);
+        }
+
+        const combinedCourseIds = Array.from(new Set([
+          ...turmasEnrolledIds,
+          ...localRegs,
+          ...localProgs.map(p => p.courseId)
+        ]));
+
+        setUserProgressList(localProgs);
+        setEnrolledCourseIds(combinedCourseIds);
+      } finally {
+        setLoadingCourses(false);
+      }
     };
 
     syncData();
@@ -41,7 +132,7 @@ export function UserProfileModal({ userId, isOpen, onClose, currentUserId }: Use
       unsubLeaderboard();
       unsubThreads();
     };
-  }, [isOpen]);
+  }, [isOpen, userId, currentUserId]);
 
   if (!isOpen) return null;
 
@@ -105,6 +196,47 @@ export function UserProfileModal({ userId, isOpen, onClose, currentUserId }: Use
     };
     await localDB.saveForumThread(updatedPost);
   };
+
+  const getCourseCompletionStats = (courseId: string) => {
+    const courseModules = modules.filter(m => m.courseId === courseId);
+    const lessons = courseModules.flatMap(m => 
+      m.lessons.length === 0 
+        ? [{ 
+            id: `live-session-${m.id}`, 
+            title: m.title, 
+            description: m.description, 
+            order: 1, 
+            duration: '1h', 
+            type: 'video' as const
+          }] 
+        : (m.lessons || [])
+    );
+    
+    const prog = userProgressList.find(p => p.courseId === courseId);
+    const completedCount = lessons.filter(l => {
+      if (l.id.startsWith('live-session-')) {
+        const modId = l.id.replace('live-session-', '');
+        const mod = courseModules.find(m => m.id === modId);
+        if (mod && (mod.isLiveClass || mod.isLive || mod.isMeet) && !mod.isLive) {
+          return true;
+        }
+      }
+      return prog?.completedLessons.includes(l.id);
+    }).length;
+    
+    const totalLessonsCount = lessons.length;
+    const percent = totalLessonsCount > 0 ? Math.round((completedCount / totalLessonsCount) * 100) : 0;
+    const isCompleted = totalLessonsCount > 0 && completedCount === totalLessonsCount;
+    
+    return {
+      completedCount,
+      totalLessonsCount,
+      percent,
+      isCompleted
+    };
+  };
+
+  const enrolledCoursesList = courses.filter(c => enrolledCourseIds.includes(c.id));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
@@ -230,6 +362,73 @@ export function UserProfileModal({ userId, isOpen, onClose, currentUserId }: Use
 
           {/* Tabs Sections: Conquistas & Publicações */}
           <div className="space-y-6">
+            {/* 0. Cursos Matriculados */}
+            <div>
+              <h3 className="text-xs uppercase tracking-wider font-mono font-bold text-slate-400 mb-3 flex items-center gap-1.5">
+                <GraduationCap className="text-emerald-400" size={15} />
+                Cursos e Progresso ({enrolledCoursesList.length})
+              </h3>
+
+              {loadingCourses ? (
+                <div className="text-center py-6 border border-slate-850 rounded-2xl bg-slate-950/40">
+                  <div className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-emerald-500 border-t-transparent mb-2"></div>
+                  <p className="text-xs text-slate-500 font-mono">Carregando cursos...</p>
+                </div>
+              ) : enrolledCoursesList.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {enrolledCoursesList.map((course) => {
+                    const stats = getCourseCompletionStats(course.id);
+                    return (
+                      <div 
+                        key={course.id}
+                        className="flex flex-col p-3.5 rounded-2xl border border-slate-800 bg-slate-950/40 hover:border-slate-700 transition duration-300"
+                      >
+                        <div className="flex gap-3">
+                          <img 
+                            src={course.thumbnail || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=120&auto=format&fit=crop&q=80'} 
+                            alt={course.title}
+                            referrerPolicy="no-referrer"
+                            className="w-12 h-12 rounded-xl object-cover shrink-0"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-xs font-bold text-slate-200 line-clamp-2 leading-snug">{course.title}</h4>
+                            <p className="text-[9px] font-mono text-slate-500 mt-1 capitalize">{course.format || 'online'}</p>
+                          </div>
+                        </div>
+
+                        {/* Progress */}
+                        <div className="mt-4 space-y-1.5">
+                          <div className="flex justify-between items-center text-[9px] font-mono">
+                            <span className="text-slate-500">Progresso</span>
+                            <span className={stats.isCompleted ? "text-emerald-400 font-bold flex items-center gap-1" : "text-slate-350 font-bold"}>
+                              {stats.isCompleted ? (
+                                <>
+                                  <CheckCircle2 size={10} className="text-emerald-400" />
+                                  Concluído
+                                </>
+                              ) : (
+                                `${stats.percent}% (${stats.completedCount}/${stats.totalLessonsCount})`
+                              )}
+                            </span>
+                          </div>
+                          <div className="h-1.5 w-full bg-slate-900 rounded-full overflow-hidden">
+                            <div 
+                              className={`h-full rounded-full transition-all duration-500 ${stats.isCompleted ? "bg-emerald-500" : "bg-emerald-400"}`}
+                              style={{ width: `${stats.percent}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-6 border border-dashed border-slate-800 rounded-2xl bg-slate-950/20">
+                  <p className="text-xs text-slate-500 font-mono">Nenhum curso matriculado ainda.</p>
+                </div>
+              )}
+            </div>
+
             {/* 1. Medals/Badges */}
             <div>
               <h3 className="text-xs uppercase tracking-wider font-mono font-bold text-slate-400 mb-3 flex items-center gap-1.5">

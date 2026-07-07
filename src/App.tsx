@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Course, CourseModule, Lesson, StudentProgress, LeaderboardUser, NotificationItem, Turma } from './types';
+import { Course, CourseModule, Lesson, StudentProgress, LeaderboardUser, NotificationItem, Turma, Redemption } from './types';
 import { localDB, auth, signInWithGmail, logoutGmail, db, signUpUserWithEmailAndPassword, signInUserWithEmailAndPassword } from './firebase';
 import { collection, addDoc, getDoc, doc } from 'firebase/firestore';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
@@ -526,6 +526,7 @@ export default function App() {
 
   // 5. Checkout / Payment flow state
   const [checkoutCourse, setCheckoutCourse] = useState<Course | null>(null);
+  const [appliedCoupon, setAppliedCoupon] = useState<Redemption | null>(null);
   const [checkoutStep, setCheckoutStep] = useState<'form' | 'success'>('form');
   const [cardNumber, setCardNumber] = useState('');
   const [cardHolder, setCardHolder] = useState('');
@@ -825,7 +826,10 @@ export default function App() {
     e.preventDefault();
     if (!checkoutCourse) return;
 
-    if (checkoutCourse.price === 0) {
+    const discount = appliedCoupon ? (appliedCoupon.discountPercentage || 0) : 0;
+    const finalPrice = checkoutCourse.price * (1 - discount / 100);
+
+    if (finalPrice === 0) {
       // Simulate approval
       setCheckoutStep('success');
       
@@ -838,12 +842,18 @@ export default function App() {
         addDoc(collection(db, 'payments'), {
           courseId: checkoutCourse.id,
           courseTitle: checkoutCourse.title,
-          amount: checkoutCourse.price,
+          amount: finalPrice,
           userId: currentUserId,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          couponCode: appliedCoupon?.couponCode || undefined
         });
       } catch (e) {
         console.error("Error saving payment", e);
+      }
+
+      if (appliedCoupon) {
+        await localDB.saveRedemption({ ...appliedCoupon, used: true });
+        setAppliedCoupon(null);
       }
 
       // Dynamic push notifier
@@ -871,7 +881,7 @@ export default function App() {
         body: JSON.stringify({
            courseId: checkoutCourse.id,
            courseTitle: checkoutCourse.title,
-           coursePrice: checkoutCourse.price
+           coursePrice: finalPrice
         }),
       });
 
@@ -879,6 +889,11 @@ export default function App() {
         const errorData = await response.json();
         alert(`Erro ao processar pagamento: ${errorData.error}`);
         return;
+      }
+
+      if (appliedCoupon) {
+        await localDB.saveRedemption({ ...appliedCoupon, used: true });
+        setAppliedCoupon(null);
       }
 
       const data = await response.json();
@@ -2021,10 +2036,12 @@ export default function App() {
                             const mod = localDB.getModules().find(m => m.courseId === course.id);
                             if (mod && mod.lessons[0]) setSelectedLesson(mod.lessons[0]);
                           }}
-                          onEnroll={() => {
+                          onEnroll={(coupon) => {
                             setCheckoutCourse(course);
+                            setAppliedCoupon(coupon || null);
                             setCheckoutStep('form');
                           }}
+                          currentUserId={currentUserId}
                         />
                       );
                     })}
@@ -2063,10 +2080,12 @@ export default function App() {
                             const mod = localDB.getModules().find(m => m.courseId === course.id);
                             if (mod && mod.lessons[0]) setSelectedLesson(mod.lessons[0]);
                           }}
-                          onEnroll={() => {
+                          onEnroll={(coupon) => {
                             setCheckoutCourse(course);
+                            setAppliedCoupon(coupon || null);
                             setCheckoutStep('form');
                           }}
+                          currentUserId={currentUserId}
                         />
                       );
                     })}
@@ -2938,7 +2957,23 @@ export default function App() {
                   </div>
                   <div className="text-right">
                     <span className="text-[10px] text-slate-500 block uppercase">Preço</span>
-                    <span className="text-xs font-bold text-emerald-400">{checkoutCourse.price === 0 ? 'Gratuito' : checkoutCourse.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                    {appliedCoupon ? (
+                      <div className="flex flex-col items-end">
+                        <span className="text-[10px] text-slate-500 line-through leading-none mb-0.5">
+                          {checkoutCourse.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </span>
+                        <span className="text-xs font-bold text-emerald-400 leading-none">
+                          {(checkoutCourse.price * (1 - (appliedCoupon.discountPercentage || 0) / 100)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </span>
+                        <span className="text-[9px] text-amber-400 font-mono mt-1">
+                          🏷️ {appliedCoupon.couponCode} (-{appliedCoupon.discountPercentage}%)
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-xs font-bold text-emerald-400">
+                        {checkoutCourse.price === 0 ? 'Gratuito' : checkoutCourse.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -2958,7 +2993,7 @@ export default function App() {
                   type="submit"
                   className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-xl transition shadow-lg shadow-emerald-500/10"
                 >
-                  {checkoutCourse.price === 0 ? 'Confirmar Matrícula Gratuita' : 'Ir para Pagamento Seguro'}
+                  {(checkoutCourse.price === 0 || (appliedCoupon && (checkoutCourse.price * (1 - (appliedCoupon.discountPercentage || 0) / 100)) === 0)) ? 'Confirmar Matrícula' : 'Ir para Pagamento Seguro'}
                 </button>
               </form>
             ) : (

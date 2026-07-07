@@ -101,6 +101,8 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
   const [rewardImageUrl, setRewardImageUrl] = useState('');
   const [rewardXpCost, setRewardXpCost] = useState(0);
   const [rewardStock, setRewardStock] = useState(0);
+  const [rewardIsCoupon, setRewardIsCoupon] = useState(false);
+  const [rewardDiscountPercentage, setRewardDiscountPercentage] = useState(10);
 
   // 5. Pre-registrations WhatsApp states
   const [preRegistrations, setPreRegistrations] = useState<PreRegistration[]>(() => localDB.getPreRegistrations());
@@ -489,6 +491,8 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
     setRewardImageUrl('');
     setRewardXpCost(500);
     setRewardStock(10);
+    setRewardIsCoupon(false);
+    setRewardDiscountPercentage(10);
     setShowRewardModal(true);
   };
 
@@ -499,6 +503,8 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
     setRewardImageUrl(r.imageUrl);
     setRewardXpCost(r.xpCost);
     setRewardStock(r.stock);
+    setRewardIsCoupon(r.isCoupon || false);
+    setRewardDiscountPercentage(r.discountPercentage || 10);
     setShowRewardModal(true);
   };
 
@@ -512,9 +518,13 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
       id: editingReward ? editingReward.id : `reward-${Date.now()}`,
       title: rewardTitle,
       description: rewardDesc,
-      imageUrl: rewardImageUrl || 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?w=300&auto=format&fit=crop&q=80',
+      imageUrl: rewardImageUrl || (rewardIsCoupon 
+        ? 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=300&auto=format&fit=crop&q=80' // coupon-like image
+        : 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?w=300&auto=format&fit=crop&q=80'),
       xpCost: Number(rewardXpCost) || 0,
-      stock: Number(rewardStock) || 0
+      stock: Number(rewardStock) || 0,
+      isCoupon: rewardIsCoupon,
+      discountPercentage: rewardIsCoupon ? Number(rewardDiscountPercentage) : undefined
     };
     try {
       await localDB.saveReward(newReward);
@@ -1661,13 +1671,18 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                   <h4 className="font-bold text-sm text-slate-200 mb-1">{r.title}</h4>
                   <p className="text-[10px] text-slate-400 text-center mb-3 line-clamp-2">{r.description}</p>
                   
-                  <div className="flex gap-2 w-full justify-center text-xs font-mono mb-4">
-                    <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-1 rounded">
+                  <div className="flex flex-wrap gap-1.5 w-full justify-center text-xs font-mono mb-4">
+                    <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded text-[10px]">
                       {r.xpCost} XP
                     </span>
-                    <span className="bg-slate-900 text-slate-400 border border-slate-800 px-2 py-1 rounded">
+                    <span className="bg-slate-900 text-slate-400 border border-slate-800 px-2 py-0.5 rounded text-[10px]">
                       Estoque: {r.stock}
                     </span>
+                    {r.isCoupon && (
+                      <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-[10px]">
+                        Cupom {r.discountPercentage}% off
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex gap-2 w-full mt-auto">
@@ -2327,6 +2342,43 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                   placeholder="https://..."
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500"
                 />
+              </div>
+
+              {/* Coupon Option */}
+              <div className="bg-slate-950 border border-slate-800/80 p-4 rounded-xl space-y-3">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="rewardIsCoupon"
+                    checked={rewardIsCoupon}
+                    onChange={(e) => setRewardIsCoupon(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-800 bg-slate-900 focus:ring-0 focus:ring-offset-0 cursor-pointer text-emerald-500"
+                  />
+                  <label htmlFor="rewardIsCoupon" className="text-xs font-semibold text-slate-200 cursor-pointer select-none">
+                    É um Cupom de Desconto?
+                  </label>
+                </div>
+                <p className="text-[10px] text-slate-400 leading-normal">
+                  Se ativado, ao resgatar este item, o aluno receberá automaticamente um código de cupom de desconto gerado com a porcentagem configurada abaixo.
+                </p>
+
+                {rewardIsCoupon && (
+                  <div className="pt-2">
+                    <label className="block text-[10px] uppercase tracking-wider font-mono text-slate-400 mb-1.5">Porcentagem de Desconto (%) *</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        required={rewardIsCoupon}
+                        min={1}
+                        max={100}
+                        value={rewardDiscountPercentage}
+                        onChange={(e) => setRewardDiscountPercentage(Number(e.target.value))}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-4 pr-8 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500 font-mono"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono text-slate-400 font-bold">%</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">

@@ -404,6 +404,7 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
                         isRegistered={true} 
                         onSelect={() => onNavigateToCourse(course)} 
                         onEnroll={() => {}} 
+                        currentUserId={user.userId}
                       />
                     </div>
                     

@@ -196,6 +196,8 @@ export interface Reward {
   imageUrl: string;
   xpCost: number;
   stock: number;
+  isCoupon?: boolean;
+  discountPercentage?: number;
 }
 
 export interface Redemption {
@@ -204,6 +206,9 @@ export interface Redemption {
   rewardId: string;
   redeemedAt: string;
   status: 'pending' | 'delivered';
+  couponCode?: string;
+  used?: boolean;
+  discountPercentage?: number;
 }
 
 export interface CertificateSettings {

@@ -3,19 +3,21 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { Course } from '../types';
-import { GraduationCap, Clock, Award, MessageCircle, Share2, Twitter, Linkedin, Link, Check } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Course, Redemption } from '../types';
+import { localDB } from '../firebase';
+import { GraduationCap, Clock, Award, MessageCircle, Share2, Twitter, Linkedin, Link, Check, Tag } from 'lucide-react';
 
 interface CourseCardProps {
   key?: string;
   course: Course;
   isRegistered: boolean;
   onSelect: () => void;
-  onEnroll: () => void;
+  onEnroll: (coupon?: Redemption) => void;
+  currentUserId?: string;
 }
 
-export function CourseCard({ course, isRegistered, onSelect, onEnroll }: CourseCardProps) {
+export function CourseCard({ course, isRegistered, onSelect, onEnroll, currentUserId }: CourseCardProps) {
   const [showShareOptions, setShowShareOptions] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -28,6 +30,24 @@ export function CourseCard({ course, isRegistered, onSelect, onEnroll }: CourseC
     });
   };
 
+  const [availableCoupons, setAvailableCoupons] = useState<Redemption[]>([]);
+  const [selectedCoupon, setSelectedCoupon] = useState<Redemption | null>(null);
+
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    const updateCoupons = () => {
+      const all = localDB.getRedemptions();
+      const mine = all.filter(r => r.userId === currentUserId && r.couponCode && !r.used);
+      setAvailableCoupons(mine);
+    };
+
+    updateCoupons();
+
+    const unsub = localDB.onChange('redemptions', updateCoupons);
+    return () => unsub();
+  }, [currentUserId]);
+
   const getWhatsappLink = () => {
     const defaultNumber = '5521971477755';
     let rawPhone = course.whatsappNumber ? course.whatsappNumber.replace(/\D/g, '') : '';
@@ -36,7 +56,20 @@ export function CourseCard({ course, isRegistered, onSelect, onEnroll }: CourseC
     } else if (rawPhone.length === 10 || rawPhone.length === 11) {
       rawPhone = '55' + rawPhone;
     }
-    return `https://wa.me/${rawPhone}?text=${encodeURIComponent(`Olá! Tenho interesse em me matricular no curso "${course.title}". Como procedo com a inscrição?`)}`;
+    
+    let text = `Olá! Tenho interesse em me matricular no curso "${course.title}". Como procedo com a inscrição?`;
+    if (selectedCoupon) {
+      text = `Olá! Quero me matricular no curso "${course.title}" e estou usando o cupom de desconto válido "${selectedCoupon.couponCode}" de ${selectedCoupon.discountPercentage}% de desconto. Como procedo com a inscrição?`;
+    }
+    
+    return `https://wa.me/${rawPhone}?text=${encodeURIComponent(text)}`;
+  };
+
+  const handleWhatsappClick = async () => {
+    if (selectedCoupon) {
+      await localDB.saveRedemption({ ...selectedCoupon, used: true });
+      setSelectedCoupon(null);
+    }
   };
 
   return (
@@ -128,6 +161,42 @@ export function CourseCard({ course, isRegistered, onSelect, onEnroll }: CourseC
           )}
         </div>
 
+        {/* Coupon Selector Section */}
+        {!isRegistered && course.price > 0 && availableCoupons.length > 0 && (
+          <div className="mt-4 p-3 bg-slate-950/80 rounded-xl border border-slate-850/60 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wide flex items-center gap-1 font-mono">
+                <Tag size={10} className="text-amber-400" />
+                Cupom de Desconto Disponível
+              </span>
+              {selectedCoupon && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedCoupon(null)}
+                  className="text-[9px] font-bold text-rose-450 hover:text-rose-400 underline cursor-pointer"
+                >
+                  Remover
+                </button>
+              )}
+            </div>
+            <select
+              value={selectedCoupon?.id || ''}
+              onChange={(e) => {
+                const found = availableCoupons.find(c => c.id === e.target.value);
+                setSelectedCoupon(found || null);
+              }}
+              className="w-full bg-slate-900 border border-slate-850 rounded-lg px-2.5 py-1.5 text-[11px] text-slate-200 focus:outline-none focus:border-amber-500 font-mono cursor-pointer"
+            >
+              <option value="">-- Selecionar Cupom --</option>
+              {availableCoupons.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.couponCode} ({c.discountPercentage}% OFF)
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* Pricing / CTA Section */}
         <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-800/80">
           <div>
@@ -135,7 +204,20 @@ export function CourseCard({ course, isRegistered, onSelect, onEnroll }: CourseC
               Investimento
             </span>
             <span className="text-lg font-display font-medium text-emerald-400">
-              {course.price === 0 ? 'Gratuito' : course.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              {course.price === 0 ? (
+                'Gratuito'
+              ) : selectedCoupon ? (
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-slate-500 line-through leading-none mb-0.5">
+                    {course.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </span>
+                  <span className="text-lg font-bold text-emerald-400 leading-none">
+                    {(course.price * (1 - (selectedCoupon.discountPercentage || 0) / 100)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </span>
+                </div>
+              ) : (
+                course.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+              )}
             </span>
           </div>
 
@@ -303,6 +385,7 @@ export function CourseCard({ course, isRegistered, onSelect, onEnroll }: CourseC
                   href={getWhatsappLink()}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={handleWhatsappClick}
                   className="px-3 py-2 text-xs font-bold rounded-xl bg-emerald-500 text-slate-950 hover:bg-emerald-400 hover:shadow-lg hover:shadow-emerald-500/25 transition-all duration-200 flex items-center justify-center gap-1"
                 >
                   <MessageCircle size={11} className="fill-slate-950 text-slate-950 shrink-0" />
@@ -311,7 +394,7 @@ export function CourseCard({ course, isRegistered, onSelect, onEnroll }: CourseC
               ) : (
                 <button
                   id={`enroll-btn-${course.id}`}
-                  onClick={onEnroll}
+                  onClick={() => onEnroll(selectedCoupon || undefined)}
                   className="px-3 py-2 text-xs font-semibold rounded-xl bg-emerald-500 text-slate-950 font-bold hover:bg-emerald-400 hover:shadow-lg hover:shadow-emerald-500/25 transition-all duration-200"
                 >
                   Matricular
