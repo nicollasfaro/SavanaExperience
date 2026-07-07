@@ -109,6 +109,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
   const [preEmail, setPreEmail] = useState('');
   const [preCourseIds, setPreCourseIds] = useState<string[]>([]);
   const [preSearchTerm, setPreSearchTerm] = useState('');
+  const [preCourseFilter, setPreCourseFilter] = useState<string>('');
   const [isSavingPre, setIsSavingPre] = useState(false);
   const [newlyPreRegisteredUser, setNewlyPreRegisteredUser] = useState<PreRegistration | null>(null);
   const [showSendEmailPrompt, setShowSendEmailPrompt] = useState(false);
@@ -198,9 +199,16 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
   });
 
   // Filters and paginated pre-registrations
-  const filteredPreRegistrations = preRegistrations.filter(
-    p => !preSearchTerm || p.email.toLowerCase().includes(preSearchTerm.toLowerCase())
-  );
+  const filteredPreRegistrations = preRegistrations.filter(p => {
+    const matchesSearch = !preSearchTerm || p.email.toLowerCase().includes(preSearchTerm.toLowerCase());
+    const matchesCourse = !preCourseFilter || p.courseIds?.includes(preCourseFilter);
+    return matchesSearch && matchesCourse;
+  });
+  const pendingPreRegistrations = preRegistrations.filter(p => {
+    const isPending = !p.used;
+    const matchesCourse = !preCourseFilter || p.courseIds?.includes(preCourseFilter);
+    return isPending && matchesCourse;
+  });
   const totalPrePages = Math.ceil(filteredPreRegistrations.length / ITEMS_PER_PAGE_PRE);
   const paginatedPreRegistrations = filteredPreRegistrations.slice(
     (prePage - 1) * ITEMS_PER_PAGE_PRE,
@@ -720,9 +728,14 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
   };
 
   const handleSendEmailsToPending = async () => {
-    const pending = preRegistrations.filter(p => !p.used);
+    const pending = pendingPreRegistrations;
     if (pending.length === 0) {
-      showToast("Não há pré-registros com status pendente para enviar e-mails.", "info");
+      showToast(
+        preCourseFilter
+          ? "Não há pré-registros pendentes para o curso selecionado para enviar e-mails."
+          : "Não há pré-registros com status pendente para enviar e-mails.",
+        "info"
+      );
       return;
     }
 
@@ -2552,7 +2565,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                 <div className="border-b border-slate-800 pb-2 flex items-center justify-between">
                   <h3 className="font-display font-medium text-slate-100 text-sm">Mensagem Personalizada</h3>
                   <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider font-mono">
-                    {preRegistrations.filter(p => !p.used).length} pendentes
+                    {pendingPreRegistrations.length} pendentes {preCourseFilter ? '(filtrado)' : ''}
                   </span>
                 </div>
 
@@ -2597,7 +2610,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                   <button
                     type="button"
                     onClick={handleSendEmailsToPending}
-                    disabled={isSendingEmails || preRegistrations.filter(p => !p.used).length === 0}
+                    disabled={isSendingEmails || pendingPreRegistrations.length === 0}
                     className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-800 text-slate-950 font-bold text-xs py-2.5 px-4 rounded-xl transition duration-200 cursor-pointer flex items-center justify-center gap-1.5 disabled:text-slate-500 disabled:cursor-not-allowed"
                   >
                     {isSendingEmails ? (
@@ -2608,7 +2621,12 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                     ) : (
                       <>
                         <Mail size={14} />
-                        <span>Disparar para todos Pendentes</span>
+                        <span>
+                          {preCourseFilter 
+                            ? `Disparar para ${pendingPreRegistrations.length} Pendentes Filtrados` 
+                            : "Disparar para todos Pendentes"
+                          }
+                        </span>
                       </>
                     )}
                   </button>
@@ -2684,6 +2702,25 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-1.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500 transition"
                     />
                   </div>
+                  
+                  {/* Course allowed filter */}
+                  <select
+                    id="pre-course-filter-select"
+                    value={preCourseFilter}
+                    onChange={(e) => {
+                      setPreCourseFilter(e.target.value);
+                      setPrePage(1);
+                    }}
+                    className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-blue-500 transition cursor-pointer font-sans"
+                  >
+                    <option value="">Filtrar por Curso...</option>
+                    {adminCourses.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.title}
+                      </option>
+                    ))}
+                  </select>
+
                   <button
                     type="button"
                     onClick={handleExportPreRegistrationsCSV}
