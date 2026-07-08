@@ -2160,7 +2160,7 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
                             TURMA: {turma.name}
                           </span>
                           <h3 className="text-base font-bold text-slate-200 line-clamp-1">{turma.courseTitle}</h3>
-                          <p className="text-xs text-slate-500">Início: {turma.startDate} • Docente Responsável: {turma.instructorName}</p>
+                          <p className="text-xs text-slate-500">Início: {turma.startDate} • Docente Responsável: Dr(a): {turma.instructorName}</p>
                         </div>
                       </div>
 
@@ -2356,7 +2356,7 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
                               MATRICULADO
                             </span>
                             <h3 className="text-base font-bold text-slate-200">{course.title}</h3>
-                            <p className="text-xs text-slate-500">Ministrante: {course.instructorName}</p>
+                            <p className="text-xs text-slate-500">Ministrante: Dr(a): {course.instructorName}</p>
                           </div>
                         </div>
 

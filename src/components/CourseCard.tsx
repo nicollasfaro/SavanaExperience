@@ -115,6 +115,13 @@ export function CourseCard({ course, isRegistered, onSelect, onEnroll, currentUs
           {course.title}
         </h3>
         
+        {course.instructorName && (
+          <p className="text-[11px] text-slate-400 mt-1.5 font-medium flex items-center gap-1">
+            <span className="text-blue-450 font-bold">Dr(a):</span>
+            <span className="text-slate-300">{course.instructorName}</span>
+          </p>
+        )}
+        
         <p className="text-slate-400 text-xs mt-2 line-clamp-2 leading-relaxed">
           {course.description}
         </p>

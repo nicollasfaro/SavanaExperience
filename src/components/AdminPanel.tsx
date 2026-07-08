@@ -65,6 +65,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
   const [courseDescription, setCourseDescription] = useState('');
   const [courseCategory, setCourseCategory] = useState('');
   const [courseInstructorName, setCourseInstructorName] = useState('');
+  const [isCustomInstructor, setIsCustomInstructor] = useState(false);
   const [courseThumbnail, setCourseThumbnail] = useState('');
   const [coursePrice, setCoursePrice] = useState(0);
   const [courseXpReward, setCourseXpReward] = useState(1000);
@@ -376,6 +377,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
     setCourseDescription('');
     setCourseCategory('Neurologia');
     setCourseInstructorName(instructors[0]?.name || 'Equipe Savana Experience');
+    setIsCustomInstructor(false);
     setCourseThumbnail('https://images.unsplash.com/photo-1576091160550-2173dba999ef?w=600&auto=format&fit=crop&q=80');
     setCoursePrice(1490);
     setCourseXpReward(1000);
@@ -410,6 +412,8 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
     setCourseType(c.type || 'course');
     setCourseDescription(c.description || '');
     setCourseCategory(c.category || 'Neurologia');
+    const isPreset = instructors.some(ins => ins.name === c.instructorName) || c.instructorName === 'Equipe Savana Experience';
+    setIsCustomInstructor(!isPreset);
     setCourseInstructorName(c.instructorName || 'Equipe Savana Experience');
     setCourseThumbnail(c.thumbnail || 'https://images.unsplash.com/photo-1576091160550-2173dba999ef?w=600&auto=format&fit=crop&q=80');
     setCoursePrice(c.price || 0);
@@ -1605,8 +1609,8 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
 
                       {/* Instructor block */}
                       <div className="p-2 bg-slate-950/80 rounded-xl border border-slate-900 flex items-center gap-2 mb-2">
-                        <div className="p-1 px-1.5 bg-blue-500/10 text-blue-400 rounded text-[9px] font-bold font-mono uppercase">Prof</div>
-                        <span className="font-semibold text-xs text-slate-200 truncate">{c.instructorName}</span>
+                        <div className="p-1 px-1.5 bg-blue-500/10 text-blue-400 rounded text-[9px] font-bold font-mono uppercase">Docente</div>
+                        <span className="font-semibold text-xs text-slate-200 truncate">Dr(a): {c.instructorName}</span>
                       </div>
                     </div>
 
@@ -1950,17 +1954,43 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                 {/* Instructor name */}
                 <div>
                   <label className="block text-[10px] uppercase tracking-wider font-mono text-slate-400 mb-1.5">Docente do Curso *</label>
-                  <select
-                    id="modal-course-instructor"
-                    value={courseInstructorName}
-                    onChange={(e) => setCourseInstructorName(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-250 focus:outline-none focus:border-blue-500"
-                  >
-                    {instructors.map(ins => (
-                      <option key={ins.userId} value={ins.name}>{ins.name}</option>
-                    ))}
-                    <option value="Equipe Savana Experience">Equipe Savana Experience</option>
-                  </select>
+                  <div className="space-y-2">
+                    <select
+                      id="modal-course-instructor"
+                      value={isCustomInstructor ? 'custom' : courseInstructorName}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === 'custom') {
+                          setIsCustomInstructor(true);
+                          setCourseInstructorName('');
+                        } else {
+                          setIsCustomInstructor(false);
+                          setCourseInstructorName(val);
+                        }
+                      }}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-250 focus:outline-none focus:border-blue-500"
+                    >
+                      {instructors.map(ins => (
+                        <option key={ins.userId} value={ins.name}>{ins.name}</option>
+                      ))}
+                      <option value="Equipe Savana Experience">Equipe Savana Experience</option>
+                      <option value="custom">Outro (Digitar Nome...)</option>
+                    </select>
+
+                    {isCustomInstructor && (
+                      <div className="relative animate-fade-in">
+                        <input
+                          id="modal-course-custom-instructor-input"
+                          type="text"
+                          placeholder="Digite o nome do docente..."
+                          value={courseInstructorName}
+                          onChange={(e) => setCourseInstructorName(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500"
+                          required
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
