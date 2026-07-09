@@ -8,7 +8,7 @@ import { LeaderboardUser, Badge } from '../types';
 import { ALL_BADGES } from '../data';
 import { 
   Trophy, Award, Zap, BookOpen, MessageSquareText, GraduationCap, 
-  ChevronLeft, ChevronRight, UserPlus, UserMinus, UserCheck, Eye 
+  ChevronLeft, ChevronRight, UserPlus, UserMinus, UserCheck, Eye, Shield 
 } from 'lucide-react';
 import { localDB } from '../firebase';
 import { UserProfileModal } from './UserProfileModal';
@@ -35,10 +35,10 @@ export function Leaderboard({ currentUserId, users }: LeaderboardProps) {
     return () => unsub();
   }, []);
 
-  // Filter out instructors/professors, only students should appear on the ranking page
+  // Filter out instructors/professors, only students/monitors should appear on the ranking page
   const studentsOnly = leaderboardUsers.length > 0 
-    ? leaderboardUsers.filter((u) => u.role === 'student') 
-    : users.filter((u) => u.role === 'student');
+    ? leaderboardUsers.filter((u) => u.role === 'student' || u.role === 'monitor') 
+    : users.filter((u) => u.role === 'student' || u.role === 'monitor');
 
   // Sort student users by XP descending
   const sortedUsers = [...studentsOnly].sort((a, b) => b.xp - a.xp);
@@ -119,6 +119,11 @@ export function Leaderboard({ currentUserId, users }: LeaderboardProps) {
                   <div className="min-w-0 flex-1">
                     <span className="font-semibold text-sm text-slate-100 flex items-center gap-1.5 group-hover:text-emerald-400 transition-colors">
                       <span className="truncate">{user.name}</span>
+                      {user.role === 'monitor' && (
+                        <span className="text-[9px] bg-purple-500/10 text-purple-400 border border-purple-500/25 font-bold px-1.5 py-0.5 rounded uppercase shrink-0 flex items-center gap-1">
+                          <Shield size={9} className="fill-purple-500/10" /> Monitor
+                        </span>
+                      )}
                       {isMe && <span className="text-[9px] bg-emerald-500 text-slate-950 font-bold px-1.5 py-0.5 rounded uppercase shrink-0">Eu</span>}
                     </span>
                     <span className="text-[10px] text-slate-500 font-mono block truncate">

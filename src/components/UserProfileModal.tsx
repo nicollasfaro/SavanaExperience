@@ -10,7 +10,7 @@ import { ALL_BADGES } from '../data';
 import { 
   X, Award, Zap, BookOpen, MessageSquareText, GraduationCap, 
   UserPlus, UserMinus, Flame, Sparkles, Calendar, Heart, MessageSquare,
-  CheckCircle2
+  CheckCircle2, Shield
 } from 'lucide-react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 
@@ -291,10 +291,19 @@ export function UserProfileModal({ userId, isOpen, onClose, currentUserId }: Use
                 <div>
                   <h2 className="text-xl font-display font-bold text-slate-100 flex items-center justify-center sm:justify-start gap-2">
                     {user.name}
+                    {user.role === 'monitor' && (
+                      <span className="text-[9px] bg-purple-500/10 text-purple-400 border border-purple-500/25 font-bold px-1.5 py-0.5 rounded uppercase flex items-center gap-1 font-mono">
+                        <Shield size={9} className="fill-purple-500/10" /> Monitor
+                      </span>
+                    )}
                   </h2>
                   <p className="text-xs text-slate-400 mt-1 capitalize p-0 font-mono flex items-center justify-center sm:justify-start gap-1">
-                    <span className={`w-2 h-2 rounded-full inline-block ${user.role === 'instructor' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
-                    {user.role === 'instructor' ? 'Medic(a) Veterinario(a) - Palestrante' : 'Membro Savana'}
+                    <span className={`w-2 h-2 rounded-full inline-block ${user.role === 'instructor' ? 'bg-amber-400' : user.role === 'monitor' ? 'bg-purple-400' : 'bg-emerald-400'}`} />
+                    {user.role === 'instructor' 
+                      ? 'Medic(a) Veterinario(a) - Palestrante' 
+                      : user.role === 'monitor' 
+                        ? 'Monitor Savana Experience' 
+                        : 'Membro Savana'}
                   </p>
                 </div>
 

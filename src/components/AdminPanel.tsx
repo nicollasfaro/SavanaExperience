@@ -1380,10 +1380,15 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                               referrerPolicy="no-referrer"
                             />
                             <div>
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="text-xs font-bold text-slate-200 block">
                                   {user.name}
                                 </span>
+                                {user.role === 'monitor' && (
+                                  <span className="text-[8px] uppercase font-mono bg-purple-500/15 text-purple-400 px-1.5 py-0.5 rounded font-bold border border-purple-500/20 inline-flex items-center gap-0.5">
+                                    <Shield size={8} /> Monitor
+                                  </span>
+                                )}
                                 {user.userId === currentUserId && (
                                   <span className="text-[8px] uppercase font-mono bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded font-bold">
                                     Você
@@ -1811,12 +1816,15 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                             title="Gerenciar Avaliações"
                           >
                             <Star size={14} className={(c.reviews || []).some(r => r.approved === true) ? "fill-amber-400 text-amber-400" : ""} />
-                            {(c.reviews || []).filter(r => r.approved === false || r.approved === undefined).length > 0 && (
-                              <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
-                              </span>
-                            )}
+                            {(() => {
+                              const pendingCount = (c.reviews || []).filter(r => r.approved === false || r.approved === undefined).length;
+                              if (pendingCount === 0) return null;
+                              return (
+                                <span className="absolute -top-2 -right-2 bg-amber-500 text-slate-950 font-mono text-[9px] font-extrabold h-4 min-w-4 px-1 rounded-full flex items-center justify-center border border-slate-900 shadow-sm animate-pulse">
+                                  {pendingCount}
+                                </span>
+                              );
+                            })()}
                           </button>
                           <button
                             id={`btn-edit-course-${c.id}`}

@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { ForumThread, ForumReply } from '../types';
-import { MessageSquare, Heart, Send, Plus, Filter, User } from 'lucide-react';
+import { MessageSquare, Heart, Send, Plus, Filter, User, Shield } from 'lucide-react';
 import { localDB } from '../firebase';
 
 interface ForumProps {
@@ -165,14 +165,18 @@ export function Forum({ currentUserId, currentUserName, currentUserRole, courseI
                 <span className="text-sm font-semibold text-slate-200 block">
                   {selectedThread.authorName}
                 </span>
-                <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
+                <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider inline-flex items-center gap-1 ${
                   selectedThread.authorRole === 'instructor'
                     ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                     : selectedThread.authorRole === 'monitor'
                     ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
                     : 'bg-slate-800 text-slate-400 border border-slate-750'
                 }`}>
-                  {selectedThread.authorRole === 'instructor' ? 'Professor / Tutor' : selectedThread.authorRole === 'monitor' ? 'Monitor' : 'Estudante'}
+                  {selectedThread.authorRole === 'instructor' ? 'Professor / Tutor' : selectedThread.authorRole === 'monitor' ? (
+                    <>
+                      <Shield size={10} className="fill-purple-500/10" /> Monitor
+                    </>
+                  ) : 'Estudante'}
                 </span>
               </div>
             </div>
@@ -215,14 +219,18 @@ export function Forum({ currentUserId, currentUserName, currentUserRole, courseI
                         <span className="text-xs font-semibold text-slate-200">
                           {reply.authorName}
                         </span>
-                        <span className={`text-[8px] ml-2 uppercase font-mono px-1.5 py-0.5 rounded ${
+                        <span className={`text-[8px] ml-2 uppercase font-mono px-1.5 py-0.5 rounded inline-flex items-center gap-0.5 ${
                           reply.authorRole === 'instructor' 
                             ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
                             : reply.authorRole === 'monitor' 
                             ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' 
                             : 'bg-slate-800 text-slate-400 border border-slate-750'
                         }`}>
-                          {reply.authorRole === 'instructor' ? 'TUTOR' : reply.authorRole === 'monitor' ? 'MONITOR' : 'ALUNO'}
+                          {reply.authorRole === 'instructor' ? 'TUTOR' : reply.authorRole === 'monitor' ? (
+                            <>
+                              <Shield size={8} className="fill-purple-500/10" /> MONITOR
+                            </>
+                          ) : 'ALUNO'}
                         </span>
                       </div>
                     </div>
@@ -313,8 +321,14 @@ export function Forum({ currentUserId, currentUserName, currentUserRole, courseI
                         <span className="px-2 py-0.5 text-[9px] uppercase font-bold text-emerald-400 bg-emerald-500/5 border border-emerald-500/10 rounded">
                           {thread.category}
                         </span>
-                        <span className="text-[11px] text-slate-500">
-                          Por {thread.authorName} • {new Date(thread.createdAt).toLocaleDateString('pt-BR')}
+                        <span className="text-[11px] text-slate-500 inline-flex items-center gap-1">
+                          Por {thread.authorName}
+                          {thread.authorRole === 'monitor' && (
+                            <span className="inline-flex items-center gap-0.5 bg-purple-500/10 text-purple-400 border border-purple-500/25 px-1 py-0.5 rounded text-[8px] font-bold uppercase font-mono tracking-wider">
+                              <Shield size={8} className="fill-purple-500/10" /> Monitor
+                            </span>
+                          )}
+                          • {new Date(thread.createdAt).toLocaleDateString('pt-BR')}
                         </span>
                       </div>
                       
