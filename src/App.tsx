@@ -3149,13 +3149,13 @@ export default function App() {
       )}
 
       {/* FLOAT SUPPORT CHAT MESSAGE INTERPRET */}
-      {biometricVerified && (
+      {/* biometricVerified && (
         <SupportChat 
           currentUserId={currentUserId}
           currentUserName={currentUserName}
           currentUserRole={currentUserRole}
         />
-      )}
+      ) */}
 
       {viewingCertificate && selectedCourse && (
         <CertificateModal
