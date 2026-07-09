@@ -1516,7 +1516,7 @@ export default function App() {
           {biometricVerified && (
             <nav className="hidden lg:flex items-center gap-1 bg-slate-900/50 p-1.5 rounded-xl border border-slate-850">
               <button
-                onClick={() => { setActiveTab('dashboard'); setSelectedCourse(null); }}
+                onClick={() => { setActiveTab('dashboard'); setSelectedCourse(null); setSelectedLesson(null); }}
                 className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${
                   activeTab === 'dashboard' 
                     ? 'bg-emerald-500 text-slate-950' 
@@ -1527,7 +1527,7 @@ export default function App() {
               </button>
 
               <button
-                onClick={() => { setActiveTab('explore'); setSelectedCourse(null); }}
+                onClick={() => { setActiveTab('explore'); setSelectedCourse(null); setSelectedLesson(null); }}
                 className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${
                   activeTab === 'explore' 
                     ? 'bg-emerald-500 text-slate-950' 
@@ -1793,7 +1793,7 @@ export default function App() {
             
             <nav className="flex-1 px-3 space-y-1 overflow-y-auto">
               <button
-                onClick={() => { setActiveTab('dashboard'); setSelectedCourse(null); setIsMobileMenuOpen(false); }}
+                onClick={() => { setActiveTab('dashboard'); setSelectedCourse(null); setSelectedLesson(null); setIsMobileMenuOpen(false); }}
                 className={`w-full text-left px-3 py-3 text-sm font-semibold rounded-xl transition flex items-center gap-3 ${
                   activeTab === 'dashboard' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'text-slate-300 hover:bg-slate-900 hover:text-slate-100'
                 }`}
@@ -1803,7 +1803,7 @@ export default function App() {
               </button>
               
               <button
-                onClick={() => { setActiveTab('explore'); setSelectedCourse(null); setIsMobileMenuOpen(false); }}
+                onClick={() => { setActiveTab('explore'); setSelectedCourse(null); setSelectedLesson(null); setIsMobileMenuOpen(false); }}
                 className={`w-full text-left px-3 py-3 text-sm font-semibold rounded-xl transition flex items-center gap-3 ${
                   activeTab === 'explore' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'text-slate-300 hover:bg-slate-900 hover:text-slate-100'
                 }`}
@@ -1943,6 +1943,12 @@ export default function App() {
             onNavigateToCourse={(course) => {
               setSelectedCourse(course);
               setActiveTab('explore');
+              const mod = localDB.getModules().find(m => m.courseId === course.id);
+              if (mod && mod.lessons[0]) {
+                setSelectedLesson(mod.lessons[0]);
+              } else {
+                setSelectedLesson(null);
+              }
             }}
           />
         )}
@@ -2050,7 +2056,11 @@ export default function App() {
                           onSelect={() => {
                             setSelectedCourse(course);
                             const mod = localDB.getModules().find(m => m.courseId === course.id);
-                            if (mod && mod.lessons[0]) setSelectedLesson(mod.lessons[0]);
+                            if (mod && mod.lessons[0]) {
+                              setSelectedLesson(mod.lessons[0]);
+                            } else {
+                              setSelectedLesson(null);
+                            }
                           }}
                           onEnroll={(coupon) => {
                             setCheckoutCourse(course);
@@ -2094,7 +2104,11 @@ export default function App() {
                           onSelect={() => {
                             setSelectedCourse(course);
                             const mod = localDB.getModules().find(m => m.courseId === course.id);
-                            if (mod && mod.lessons[0]) setSelectedLesson(mod.lessons[0]);
+                            if (mod && mod.lessons[0]) {
+                              setSelectedLesson(mod.lessons[0]);
+                            } else {
+                              setSelectedLesson(null);
+                            }
                           }}
                           onEnroll={(coupon) => {
                             setCheckoutCourse(course);
@@ -2136,6 +2150,7 @@ export default function App() {
                     onClick={() => {
                       setIsAdminPreviewing(false);
                       setSelectedCourse(null);
+                      setSelectedLesson(null);
                       setActiveTab('admin');
                     }}
                     className="px-3 py-1.5 bg-blue-500 hover:bg-blue-450 text-slate-950 font-bold text-[10px] rounded-xl transition cursor-pointer"
@@ -2151,9 +2166,11 @@ export default function App() {
                 if (isAdminPreviewing) {
                   setIsAdminPreviewing(false);
                   setSelectedCourse(null);
+                  setSelectedLesson(null);
                   setActiveTab('admin');
                 } else {
                   setSelectedCourse(null);
+                  setSelectedLesson(null);
                 }
               }}
               className="text-xs text-slate-400 hover:text-emerald-400 flex items-center gap-1.5 transition"
