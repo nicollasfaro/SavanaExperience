@@ -2535,7 +2535,7 @@ export default function App() {
               <div className="space-y-4">
                 
                 {/* Certificate Banner (if course concluded 100%) */}
-                {(() => {
+                {hasAccess && (() => {
                   const courseModules = modules.filter(m => m.courseId === selectedCourse.id);
                   const lessons = courseModules.flatMap(m => (m.isLiveClass || m.isLive) 
                     ? [{ 
@@ -2615,12 +2615,66 @@ export default function App() {
                       const prog = userProgress.find(p => p.courseId === selectedCourse.id);
                       const isLiveCompleted = (mod.isLiveClass || mod.isLive || mod.isMeet) && (prog?.completedLessons.includes(`live-session-${mod.id}`) || (!mod.isLive && !mod.isMeet));
 
+                      // Calculate individual module progress
+                      const modLessons = (mod.isLiveClass || mod.isLive || mod.isMeet) 
+                        ? [{ 
+                            id: `live-session-${mod.id}`, 
+                            moduleId: mod.id, 
+                            title: `Aula Ao Vivo: ${mod.title}`, 
+                            description: mod.description, 
+                            order: 1, 
+                            duration: '1h', 
+                            type: 'video' 
+                          } as any] 
+                        : (mod.lessons || []);
+
+                      const totalModLessons = modLessons.length;
+                      const completedModLessons = modLessons.filter(l => {
+                        if (l.id.startsWith('live-session-')) {
+                          if (!mod.isLive && !mod.isMeet) {
+                            return true; // Live session concluded/ended is automatically completed
+                          }
+                          return prog?.completedLessons.includes(l.id);
+                        }
+                        return prog?.completedLessons.includes(l.id);
+                      }).length;
+
+                      const modPercent = totalModLessons > 0 ? Math.round((completedModLessons / totalModLessons) * 100) : 0;
+                      const isModComplete = totalModLessons > 0 && completedModLessons === totalModLessons;
+                      const isLiveModule = !!(mod.isLiveClass || mod.isLive || mod.isMeet);
+
                       return (
                         <div key={mod.id} className="space-y-2 border-b border-slate-900/60 pb-3 last:border-none">
                           <div className="space-y-1">
-                            <span className="block text-[10px] uppercase font-mono tracking-wider font-semibold text-emerald-400">
-                              {mod.title}
-                            </span>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="block text-[10px] uppercase font-mono tracking-wider font-semibold text-emerald-400 truncate max-w-[70%]" title={mod.title}>
+                                {mod.title}
+                              </span>
+                              {hasAccess && !isLiveModule && (
+                                <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                                  isModComplete 
+                                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                                    : 'bg-slate-950 text-slate-400 border border-slate-850'
+                                }`}>
+                                  {isModComplete ? 'Concluído ✓' : `${modPercent}% (${completedModLessons}/${totalModLessons})`}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Visual progress bar */}
+                            {hasAccess && !isLiveModule && (
+                              <div className="h-1 w-full bg-slate-950 rounded-full overflow-hidden mt-1 mb-2 border border-slate-855/40">
+                                <div 
+                                  className={`h-full rounded-full transition-all duration-500 ${
+                                    isModComplete 
+                                      ? 'bg-gradient-to-r from-emerald-500 to-teal-400' 
+                                      : 'bg-emerald-500/70'
+                                  }`} 
+                                  style={{ width: `${modPercent}%` }}
+                                />
+                              </div>
+                            )}
+
                             {(mod.isLiveClass || mod.isLive || mod.isMeet) && (
                               <div className="flex flex-col gap-0.5 mt-1">
                                 {isLiveCompleted ? (

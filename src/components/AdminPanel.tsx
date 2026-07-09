@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { collection, getDocs } from 'firebase/firestore';
 import Cropper from 'react-easy-crop';
@@ -56,6 +56,22 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
 
   // 3. Courses management states
   const [adminCourses, setAdminCourses] = useState<Course[]>(() => localDB.getCourses());
+  
+  // Calcula o enrolledCount dinamicamente baseado nos alunos ativos nas turmas correspondentes
+  const computedAdminCourses = useMemo(() => {
+    return adminCourses.map(course => {
+      const courseTurmas = turmas.filter(t => t.courseId === course.id);
+      const uniqueStudents = new Set<string>();
+      courseTurmas.forEach(t => {
+        t.studentIds?.forEach(id => uniqueStudents.add(id));
+      });
+      return {
+        ...course,
+        enrolledCount: uniqueStudents.size
+      };
+    });
+  }, [adminCourses, turmas]);
+
   const [courseSearchTerm, setCourseSearchTerm] = useState('');
   
   // Courses form/modal state
@@ -359,7 +375,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
   };
 
   // FILTERS FOR COURSES
-  const filteredCourses = adminCourses.filter(c => {
+  const filteredCourses = computedAdminCourses.filter(c => {
     const term = courseSearchTerm.toLowerCase();
     return (
       c.title.toLowerCase().includes(term) ||
@@ -2538,7 +2554,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
       )}
       {/* TAB 5: FINANCE REPORT */}
       {adminTab === 'finance' && (
-        <FinanceReport courses={adminCourses} />
+        <FinanceReport courses={computedAdminCourses} />
       )}
 
       {/* TAB 6: CERTIFICATE CUSTOMIZATION SETTINGS */}

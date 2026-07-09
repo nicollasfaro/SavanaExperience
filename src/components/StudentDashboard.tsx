@@ -91,6 +91,73 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
   // Certificate Modal State
   const [selectedCertCourse, setSelectedCertCourse] = useState<Course | null>(null);
 
+  // Course Review/Evaluation States
+  const [selectedReviewCourse, setSelectedReviewCourse] = useState<Course | null>(null);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [savingReview, setSavingReview] = useState(false);
+
+  // Synchronize previously saved rating and comment
+  useEffect(() => {
+    if (selectedReviewCourse) {
+      const reviews = selectedReviewCourse.reviews || [];
+      const existing = reviews.find(r => r.userId === user.userId);
+      if (existing) {
+        setReviewRating(existing.rating);
+        setReviewComment(existing.comment || '');
+      } else {
+        setReviewRating(5);
+        setReviewComment('');
+      }
+    }
+  }, [selectedReviewCourse, user.userId]);
+
+  const hasRated = (course: Course) => {
+    return (course.reviews || []).some(r => r.userId === user.userId);
+  };
+
+  const handleSaveReview = async () => {
+    if (!selectedReviewCourse) return;
+    setSavingReview(true);
+    try {
+      const reviews = selectedReviewCourse.reviews || [];
+      const existingIndex = reviews.findIndex(r => r.userId === user.userId);
+      
+      const newReview = {
+        userId: user.userId,
+        userName: user.name,
+        userAvatar: user.avatar,
+        rating: reviewRating,
+        comment: reviewComment,
+        createdAt: new Date().toISOString()
+      };
+      
+      let updatedReviews = [...reviews];
+      if (existingIndex >= 0) {
+        updatedReviews[existingIndex] = newReview;
+      } else {
+        updatedReviews.push(newReview);
+      }
+      
+      const averageRating = parseFloat(
+        (updatedReviews.reduce((sum, r) => sum + r.rating, 0) / updatedReviews.length).toFixed(1)
+      );
+      
+      const updatedCourse: Course = {
+        ...selectedReviewCourse,
+        reviews: updatedReviews,
+        rating: averageRating
+      };
+      
+      await localDB.saveCourse(updatedCourse);
+      setSelectedReviewCourse(null);
+    } catch (err) {
+      console.error("Error saving course review:", err);
+    } finally {
+      setSavingReview(false);
+    }
+  };
+
   // SAVANA SOCIAL NETWORKING STATES
   const [socialFeed, setSocialFeed] = useState<ForumThread[]>([]);
   const [allLeaderboardUsers, setAllLeaderboardUsers] = useState<LeaderboardUser[]>([]);
@@ -424,16 +491,28 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
                       </div>
                       
                       {isCourseCompleted ? (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedCertCourse(course);
-                          }}
-                          className="mt-1 w-full py-2.5 bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-300 hover:to-teal-400 text-slate-950 text-[10px] uppercase font-mono font-black tracking-wider rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md hover:scale-[1.01]"
-                        >
-                          <Award size={12} />
-                          Emitir Certificado
-                        </button>
+                        <div className="flex flex-col gap-1.5 mt-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedCertCourse(course);
+                            }}
+                            className="w-full py-2.5 bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-300 hover:to-teal-400 text-slate-950 text-[10px] uppercase font-mono font-black tracking-wider rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md hover:scale-[1.01]"
+                          >
+                            <Award size={12} />
+                            Emitir Certificado
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedReviewCourse(course);
+                            }}
+                            className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-slate-200 text-[10px] uppercase font-mono font-bold tracking-wider rounded-lg transition-all border border-slate-800 flex items-center justify-center gap-1 cursor-pointer"
+                          >
+                            <Star size={11} className="text-amber-400 fill-amber-400" />
+                            {hasRated(course) ? "Sua Avaliação (Editar)" : "Avaliar Curso"}
+                          </button>
+                        </div>
                       ) : (
                         <button
                           onClick={() => onNavigateToCourse(course)}
@@ -840,6 +919,118 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
           }}
           currentUserId={user.userId}
         />
+      )}
+
+      {/* Course Evaluation Modal */}
+      {selectedReviewCourse && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999] animate-fadeIn">
+          <div 
+            className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-scaleUp p-6 space-y-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-display text-lg font-bold text-slate-100">
+                  Avaliar Curso
+                </h3>
+                <p className="text-xs text-slate-400 mt-1 line-clamp-1">
+                  {selectedReviewCourse.title}
+                </p>
+              </div>
+              <button 
+                onClick={() => setSelectedReviewCourse(null)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition cursor-pointer"
+                id="btn-close-review-form-modal"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Star Selection Block */}
+              <div className="text-center bg-slate-950/40 p-4 rounded-2xl border border-slate-850/60 space-y-2">
+                <span className="block text-xs font-mono font-bold uppercase tracking-wider text-slate-400">
+                  Sua Nota
+                </span>
+                <div className="flex items-center justify-center gap-2">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setReviewRating(star)}
+                      className="p-1 hover:scale-110 transition cursor-pointer"
+                      id={`btn-star-rate-${star}`}
+                    >
+                      <Star 
+                        size={32} 
+                        className={`${
+                          star <= reviewRating 
+                            ? "text-amber-400 fill-amber-400" 
+                            : "text-slate-700"
+                        } transition-all`} 
+                      />
+                    </button>
+                  ))}
+                </div>
+                <span className="text-[11px] font-mono font-semibold text-amber-400">
+                  {reviewRating === 5 && "Incrível! Excelente curso 🌟"}
+                  {reviewRating === 4 && "Muito bom! Vale a pena 👍"}
+                  {reviewRating === 3 && "Bom/Regular. Pode melhorar 😐"}
+                  {reviewRating === 2 && "Ruim. Deixou a desejar 😕"}
+                  {reviewRating === 1 && "Muito ruim. Não recomendo 😡"}
+                </span>
+              </div>
+
+              {/* Textarea comment block */}
+              <div className="space-y-2">
+                <label className="block text-xs font-mono font-bold uppercase tracking-wider text-slate-400" id="label-review-text">
+                  Seu Comentário (Opcional)
+                </label>
+                <textarea
+                  value={reviewComment}
+                  onChange={(e) => setReviewComment(e.target.value)}
+                  placeholder="Escreva aqui o que você achou do conteúdo, didática, materiais e do professor..."
+                  rows={4}
+                  className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-800 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 font-medium text-xs leading-relaxed transition-all focus:ring-1 focus:ring-emerald-500/20 resize-none"
+                  id="textarea-review-comment"
+                  maxLength={500}
+                />
+                <div className="text-right text-[10px] text-slate-500 font-mono">
+                  {reviewComment.length}/500 caracteres
+                </div>
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex gap-3 pt-2 border-t border-slate-800/50">
+              <button 
+                type="button"
+                onClick={() => setSelectedReviewCourse(null)}
+                disabled={savingReview}
+                className="flex-1 py-3 px-4 rounded-xl text-xs font-mono font-bold uppercase tracking-wider text-slate-300 hover:text-slate-100 hover:bg-slate-850 border border-slate-800 transition cursor-pointer disabled:opacity-50"
+                id="btn-cancel-review"
+              >
+                Cancelar
+              </button>
+              <button 
+                type="button"
+                onClick={handleSaveReview}
+                disabled={savingReview}
+                className="flex-1 py-3 px-4 rounded-xl text-xs font-mono font-bold uppercase tracking-wider bg-emerald-400 text-slate-950 hover:bg-emerald-300 transition cursor-pointer font-black flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/10 disabled:opacity-50"
+                id="btn-submit-review"
+              >
+                {savingReview ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Enviando...
+                  </>
+                ) : (
+                  'Salvar Avaliação'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

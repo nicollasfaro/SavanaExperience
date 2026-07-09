@@ -416,6 +416,7 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
   const [courses, setCourses] = useState(() => localDB.getCourses());
   const [modules, setModules] = useState(() => localDB.getModules());
   const [turmas, setTurmas] = useState(() => localDB.getTurmas());
+  const [userProgress, setUserProgress] = useState(() => localDB.getProgress(currentUserId));
 
   // Lobby management states
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
@@ -428,12 +429,16 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
     const unsubCourses = localDB.onChange('courses', () => setCourses(localDB.getCourses()));
     const unsubModules = localDB.onChange('modules', () => setModules(localDB.getModules()));
     const unsubTurmas = localDB.onChange('turmas', () => setTurmas(localDB.getTurmas()));
+    const unsubProgress = localDB.onChange(`progress_${currentUserId}`, () => {
+      setUserProgress(localDB.getProgress(currentUserId));
+    });
     return () => {
       unsubCourses();
       unsubModules();
       unsubTurmas();
+      unsubProgress();
     };
-  }, []);
+  }, [currentUserId]);
 
   // Synchronic helper for direct redirect from the curriculum sidebar
   useEffect(() => {
@@ -2371,6 +2376,35 @@ export function Classroom({ currentUserId, currentUserName, currentUserRole, myR
                                 const isModLive = mod.isLive === true;
                                 const isMeet = mod.isMeet === true;
                                 const now = new Date();
+
+                                // Calculate module progress
+                                const prog = userProgress.find(p => p.courseId === course.id);
+                                const modLessons = (mod.isLiveClass || mod.isLive) 
+                                  ? [{ 
+                                      id: `live-session-${mod.id}`, 
+                                      moduleId: mod.id, 
+                                      title: `Aula Ao Vivo: ${mod.title}`, 
+                                      description: mod.description, 
+                                      order: 1, 
+                                      duration: '1h', 
+                                      type: 'video' 
+                                    } as any] 
+                                  : (mod.lessons || []);
+
+                                const totalModLessons = modLessons.length;
+                                const completedModLessons = modLessons.filter(l => {
+                                  if (l.id.startsWith('live-session-')) {
+                                    const modId = l.id.replace('live-session-', '');
+                                    const m = modules.find(x => x.id === modId);
+                                    if (m && (m.isLiveClass || m.isLive) && !m.isLive) {
+                                      return true;
+                                    }
+                                  }
+                                  return prog?.completedLessons.includes(l.id);
+                                }).length;
+
+                                const modPercent = totalModLessons > 0 ? Math.round((completedModLessons / totalModLessons) * 100) : 0;
+                                const isModComplete = totalModLessons > 0 && completedModLessons === totalModLessons;
 
                                 if (isMeet) {
                                   const meetDateObj = mod.meetDateTime ? new Date(mod.meetDateTime) : null;

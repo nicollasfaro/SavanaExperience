@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Course, Redemption } from '../types';
 import { localDB } from '../firebase';
-import { GraduationCap, Clock, Award, MessageCircle, Share2, Twitter, Linkedin, Link, Check, Tag } from 'lucide-react';
+import { GraduationCap, Clock, Award, MessageCircle, Share2, Twitter, Linkedin, Link, Check, Tag, Star, X } from 'lucide-react';
 
 interface CourseCardProps {
   key?: string;
@@ -20,6 +20,13 @@ interface CourseCardProps {
 export function CourseCard({ course, isRegistered, onSelect, onEnroll, currentUserId }: CourseCardProps) {
   const [showShareOptions, setShowShareOptions] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [isReviewsModalOpen, setIsReviewsModalOpen] = useState(false);
+
+  const reviewsList = course.reviews || [];
+  const reviewsCount = reviewsList.length;
+  const averageRating = reviewsCount > 0 
+    ? (reviewsList.reduce((acc, r) => acc + r.rating, 0) / reviewsCount).toFixed(1)
+    : null;
 
   const handleCopyLink = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -121,6 +128,29 @@ export function CourseCard({ course, isRegistered, onSelect, onEnroll, currentUs
             <span className="text-slate-300">{course.instructorName}</span>
           </p>
         )}
+
+        {/* Rating/Reviews button */}
+        <div className="flex items-center gap-2 mt-1.5">
+          {reviewsCount > 0 ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsReviewsModalOpen(true);
+              }}
+              className="flex items-center gap-1 text-[11px] text-amber-400 hover:text-amber-350 transition-colors cursor-pointer bg-amber-500/5 hover:bg-amber-500/10 border border-amber-500/10 hover:border-amber-500/20 px-2 py-0.5 rounded-lg font-mono font-bold"
+              id={`btn-course-reviews-${course.id}`}
+            >
+              <Star size={11} className="fill-amber-400 text-amber-400" />
+              <span>{averageRating}</span>
+              <span className="text-slate-400 font-sans font-normal text-[10px]">({reviewsCount} {reviewsCount === 1 ? 'avaliação' : 'avaliações'})</span>
+            </button>
+          ) : (
+            <span className="text-[10px] text-slate-500 font-mono italic">
+              Sem avaliações ainda
+            </span>
+          )}
+        </div>
         
         <p className="text-slate-400 text-xs mt-2 line-clamp-2 leading-relaxed">
           {course.description}
@@ -411,6 +441,132 @@ export function CourseCard({ course, isRegistered, onSelect, onEnroll, currentUs
           )}
         </div>
       </div>
+
+      {/* Reviews Modal */}
+      {isReviewsModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999] animate-fadeIn" onClick={() => setIsReviewsModalOpen(false)}>
+          <div 
+            className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl animate-scaleUp"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+              <div>
+                <h3 className="font-display text-lg font-bold text-slate-100">
+                  Avaliações do Curso
+                </h3>
+                <p className="text-xs text-slate-400 mt-1 line-clamp-1">
+                  {course.title}
+                </p>
+              </div>
+              <button 
+                onClick={() => setIsReviewsModalOpen(false)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition cursor-pointer"
+                id="btn-close-reviews-modal"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Overview Stats */}
+            <div className="p-6 bg-slate-950/30 border-b border-slate-800/50 flex items-center gap-6">
+              <div className="text-center">
+                <span className="block text-4xl font-display font-black text-amber-400">
+                  {averageRating || "0.0"}
+                </span>
+                <div className="flex items-center gap-0.5 justify-center mt-1">
+                  {[1, 2, 3, 4, 5].map((s) => (
+                    <Star 
+                      key={s} 
+                      size={14} 
+                      className={`${
+                        s <= Math.round(parseFloat(averageRating || "0")) 
+                          ? "text-amber-400 fill-amber-400" 
+                          : "text-slate-700"
+                      }`} 
+                    />
+                  ))}
+                </div>
+                <span className="text-[10px] text-slate-500 font-mono mt-1 block">
+                  {reviewsCount} {reviewsCount === 1 ? 'avaliação' : 'avaliações'}
+                </span>
+              </div>
+
+              <div className="flex-1 flex flex-col gap-1.5 border-l border-slate-800/80 pl-6">
+                {[5, 4, 3, 2, 1].map((ratingVal) => {
+                  const valCount = (course.reviews || []).filter(r => r.rating === ratingVal).length;
+                  const pct = reviewsCount > 0 ? (valCount / reviewsCount) * 100 : 0;
+                  return (
+                    <div key={ratingVal} className="flex items-center gap-2 text-xs">
+                      <span className="font-mono text-slate-400 w-3 text-right">{ratingVal}</span>
+                      <Star size={10} className="text-amber-400 fill-amber-400" />
+                      <div className="flex-1 h-1.5 bg-slate-950 rounded-full overflow-hidden">
+                        <div className="h-full bg-amber-400 rounded-full" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="font-mono text-slate-500 w-6 text-right">
+                        {valCount}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Reviews List */}
+            <div className="max-h-[300px] overflow-y-auto p-6 space-y-4 divide-y divide-slate-800/60 custom-scrollbar">
+              {(course.reviews || []).length === 0 ? (
+                <div className="text-center py-6">
+                  <p className="text-sm text-slate-500 italic">Nenhuma avaliação detalhada ainda.</p>
+                </div>
+              ) : (
+                (course.reviews || []).map((review, rIdx) => {
+                  const ratingValue = review.rating || 5;
+                  return (
+                    <div key={review.userId || rIdx} className={`pt-4 ${rIdx === 0 ? 'pt-0' : ''}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <img 
+                            src={review.userAvatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'} 
+                            alt={review.userName || 'Estudante'} 
+                            referrerPolicy="no-referrer"
+                            className="w-8 h-8 rounded-full border border-slate-800 object-cover"
+                          />
+                          <div>
+                            <span className="block text-xs font-semibold text-slate-200">
+                              {review.userName || 'Estudante'}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-mono">
+                              {review.createdAt ? new Date(review.createdAt).toLocaleDateString('pt-BR') : 'Data não informada'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-0.5">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star 
+                              key={star} 
+                              size={10} 
+                              className={`${
+                                star <= ratingValue 
+                                  ? "text-amber-400 fill-amber-400" 
+                                  : "text-slate-700"
+                              }`} 
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      {review.comment && (
+                        <p className="mt-2 text-xs text-slate-300 leading-relaxed pl-10">
+                          {review.comment}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -8,6 +8,8 @@ export interface CourseReview {
   rating: number;
   comment?: string;
   createdAt: string;
+  userName?: string;
+  userAvatar?: string;
 }
 
 export interface Course {
