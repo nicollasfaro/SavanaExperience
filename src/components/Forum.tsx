@@ -11,7 +11,7 @@ import { localDB } from '../firebase';
 interface ForumProps {
   currentUserId: string;
   currentUserName: string;
-  currentUserRole: 'student' | 'instructor';
+  currentUserRole: 'student' | 'instructor' | 'monitor';
   courseIdFilter?: string; // Optional filter by course context
 }
 
@@ -165,8 +165,14 @@ export function Forum({ currentUserId, currentUserName, currentUserRole, courseI
                 <span className="text-sm font-semibold text-slate-200 block">
                   {selectedThread.authorName}
                 </span>
-                <span className="text-[10px] uppercase font-bold text-slate-500">
-                  {selectedThread.authorRole === 'instructor' ? 'Professor / Tutor' : 'Estudante'}
+                <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
+                  selectedThread.authorRole === 'instructor'
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                    : selectedThread.authorRole === 'monitor'
+                    ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
+                    : 'bg-slate-800 text-slate-400 border border-slate-750'
+                }`}>
+                  {selectedThread.authorRole === 'instructor' ? 'Professor / Tutor' : selectedThread.authorRole === 'monitor' ? 'Monitor' : 'Estudante'}
                 </span>
               </div>
             </div>
@@ -209,8 +215,14 @@ export function Forum({ currentUserId, currentUserName, currentUserRole, courseI
                         <span className="text-xs font-semibold text-slate-200">
                           {reply.authorName}
                         </span>
-                        <span className="text-[8px] ml-2 uppercase font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
-                          {reply.authorRole === 'instructor' ? 'TUTOR' : 'ALUNO'}
+                        <span className={`text-[8px] ml-2 uppercase font-mono px-1.5 py-0.5 rounded ${
+                          reply.authorRole === 'instructor' 
+                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                            : reply.authorRole === 'monitor' 
+                            ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' 
+                            : 'bg-slate-800 text-slate-400 border border-slate-750'
+                        }`}>
+                          {reply.authorRole === 'instructor' ? 'TUTOR' : reply.authorRole === 'monitor' ? 'MONITOR' : 'ALUNO'}
                         </span>
                       </div>
                     </div>

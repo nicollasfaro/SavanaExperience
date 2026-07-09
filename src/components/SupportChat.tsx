@@ -11,7 +11,7 @@ import { localDB } from '../firebase';
 interface SupportChatProps {
   currentUserId: string;
   currentUserName: string;
-  currentUserRole: 'student' | 'instructor';
+  currentUserRole: 'student' | 'instructor' | 'monitor';
 }
 
 export function SupportChat({ currentUserId, currentUserName, currentUserRole }: SupportChatProps) {

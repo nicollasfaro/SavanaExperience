@@ -15,7 +15,7 @@ import { CertificateSettingsPanel } from './CertificateSettingsPanel';
 
 interface AdminPanelProps {
   allUsers: LeaderboardUser[];
-  onUpdateRole: (userId: string, role: 'student' | 'instructor' | 'admin') => void | Promise<void>;
+  onUpdateRole: (userId: string, role: 'student' | 'instructor' | 'admin' | 'monitor') => void | Promise<void>;
   currentUserId: string;
   courses: Course[];
   onPreviewCourse?: (course: Course) => void;
@@ -27,7 +27,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
 
   // 1. Users management states
   const [searchTerm, setSearchTerm] = useState('');
-  const [roleFilter, setRoleFilter] = useState<'all' | 'student' | 'instructor'>('all');
+  const [roleFilter, setRoleFilter] = useState<'all' | 'student' | 'instructor' | 'monitor'>('all');
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [usersPage, setUsersPage] = useState(1);
   const ITEMS_PER_PAGE_USERS = 10;
@@ -1208,6 +1208,17 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
               >
                 Professores
               </button>
+              <button
+                onClick={() => {
+                  setRoleFilter('monitor');
+                  setUsersPage(1);
+                }}
+                className={`px-3 py-1.5 text-[10px] font-bold rounded-lg uppercase tracking-wider transition shrink-0 ${
+                  roleFilter === 'monitor' ? 'bg-purple-500 text-slate-100 font-bold' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Monitores
+              </button>
             </div>
           </div>
 
@@ -1293,6 +1304,11 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                               <UserCheck size={11} />
                               Professor
                             </span>
+                          ) : user.role === 'monitor' ? (
+                            <span className="inline-flex items-center gap-1 bg-purple-500/15 border border-purple-500/30 text-purple-400 px-2.5 py-1 rounded-xl font-bold text-[10px] uppercase tracking-wider">
+                              <Shield size={11} />
+                              Monitor
+                            </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 bg-slate-900 border border-slate-808 text-slate-400 px-2.5 py-1 rounded-xl font-bold text-[10px] uppercase tracking-wider">
                               <User size={11} />
@@ -1319,6 +1335,36 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                                 'Remover Docência'
                               ) : (
                                 'Designar Professor'
+                              )}
+                            </button>
+
+                            <button
+                              id={`toggle-monitor-${user.userId}`}
+                              disabled={updatingUserId === user.userId || user.email === 'ciuldinciuldin@gmail.com'}
+                              onClick={async () => {
+                                setUpdatingUserId(user.userId);
+                                const newRole = user.role === 'monitor' ? 'student' : 'monitor';
+                                try {
+                                  await onUpdateRole(user.userId, newRole);
+                                  showToast("Cargo de monitor atualizado com sucesso!");
+                                } catch (err) {
+                                  showToast("Erro ao atualizar monitor.", "error");
+                                } finally {
+                                  setUpdatingUserId(null);
+                                }
+                              }}
+                              className={`text-[10px] uppercase font-mono font-bold tracking-wider px-3.5 py-1.5 rounded-lg transition-all ${
+                                user.role === 'monitor'
+                                  ? 'bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 hover:border-red-500/40'
+                                  : 'bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 hover:border-purple-500/40'
+                              } disabled:opacity-40 disabled:cursor-not-allowed`}
+                            >
+                              {updatingUserId === user.userId ? (
+                                '...'
+                              ) : user.role === 'monitor' ? (
+                                'Remover Monitoria'
+                              ) : (
+                                'Designar Monitor'
                               )}
                             </button>
                             {/* Make Admin Toggle Button */}

@@ -21,7 +21,7 @@ export interface ClassroomParticipant {
   userId: string;
   name: string;
   avatar: string;
-  role: 'instructor' | 'student';
+  role: 'instructor' | 'student' | 'monitor';
   micOn: boolean;
   camOn: boolean;
   handRaised: boolean;
@@ -33,7 +33,7 @@ export interface ClassroomChatMsg {
   id: string;
   senderId: string;
   senderName: string;
-  senderRole: 'instructor' | 'student';
+  senderRole: 'instructor' | 'student' | 'monitor';
   message: string;
   createdAt: string;
 }
@@ -143,7 +143,7 @@ const INITIAL_MESSAGES: ClassroomChatMsg[] = [
 export interface ClassroomProps {
   currentUserId: string;
   currentUserName: string;
-  currentUserRole: 'student' | 'instructor';
+  currentUserRole: 'student' | 'instructor' | 'monitor';
   myRegistrations?: string[];
 }
 

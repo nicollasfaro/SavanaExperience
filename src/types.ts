@@ -119,7 +119,7 @@ export interface LeaderboardUser {
   xp: number;
   level: number;
   badges: string[]; // Badge IDs
-  role: 'student' | 'instructor';
+  role: 'student' | 'instructor' | 'monitor';
   following?: string[]; // list of userIds this user follows
   followers?: string[]; // list of userIds following this user
 }
@@ -131,7 +131,7 @@ export interface ForumThread {
   content: string;
   authorId: string;
   authorName: string;
-  authorRole: 'student' | 'instructor';
+  authorRole: 'student' | 'instructor' | 'monitor';
   createdAt: string;
   category: string;
   likes: number;
@@ -144,7 +144,7 @@ export interface ForumReply {
   content: string;
   authorId: string;
   authorName: string;
-  authorRole: 'student' | 'instructor';
+  authorRole: 'student' | 'instructor' | 'monitor';
   createdAt: string;
 }
 
@@ -152,7 +152,7 @@ export interface ChatMessage {
   id: string;
   senderId: string;
   senderName: string;
-  senderRole: 'student' | 'instructor';
+  senderRole: 'student' | 'instructor' | 'monitor';
   message: string;
   createdAt: string;
   chatId?: string;

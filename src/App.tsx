@@ -442,7 +442,7 @@ export default function App() {
   // 2. Auth State and Dynamic Role (Toggled only in real-time by General Admin in database)
   const isSystemAdmin = authUser?.email === 'ciuldinciuldin@gmail.com' || isAdminRoleFromDB;
   const dbUser = authUser ? allLeaderboard.find(u => u.userId === authUser.uid) : null;
-  const currentUserRole: 'student' | 'instructor' = dbUser?.role || (isSystemAdmin ? 'instructor' : 'student');
+  const currentUserRole: 'student' | 'instructor' | 'monitor' = dbUser?.role || (isSystemAdmin ? 'instructor' : 'student');
   const currentUserId = authUser?.uid || 'current-user-id';
   const currentUserName = authUser?.displayName || authUser?.email?.split('@')[0] || 'Mário Medeiros';
   const currentUserAvatar = dbUser?.avatar || authUser?.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80';
@@ -522,7 +522,9 @@ export default function App() {
   const [isAdminPreviewing, setIsAdminPreviewing] = useState(false);
   const [adminPreviewHasAccess, setAdminPreviewHasAccess] = useState(true);
   const hasAccess = selectedCourse 
-    ? (isAdminPreviewing ? adminPreviewHasAccess : myRegistrations.includes(selectedCourse.id)) 
+    ? (isAdminPreviewing 
+        ? adminPreviewHasAccess 
+        : (currentUserRole === 'monitor' || myRegistrations.includes(selectedCourse.id))) 
     : false;
 
   // 5. Checkout / Payment flow state
@@ -707,7 +709,7 @@ export default function App() {
     setCourses(localDB.getCourses());
   };
 
-  const handleUpdateRole = async (userId: string, role: 'student' | 'instructor' | 'admin') => {
+  const handleUpdateRole = async (userId: string, role: 'student' | 'instructor' | 'admin' | 'monitor') => {
     await localDB.updateUserRole(userId, role);
   };
 
@@ -1630,6 +1632,11 @@ export default function App() {
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                     <span className="text-emerald-400">Professor</span>
                   </>
+                ) : currentUserRole === 'monitor' ? (
+                  <>
+                    <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />
+                    <span className="text-purple-400 font-bold">Monitor</span>
+                  </>
                 ) : (
                   <>
                     <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
@@ -2032,7 +2039,7 @@ export default function App() {
                   {computedCourses
                     .filter(course => (formatFilter === 'all' || course.format === formatFilter) && course.type !== 'capsule')
                     .map(course => {
-                      const isRegistered = myRegistrations.includes(course.id);
+                      const isRegistered = currentUserRole === 'monitor' || myRegistrations.includes(course.id);
 
                       return (
                         <CourseCard
@@ -2076,7 +2083,7 @@ export default function App() {
                   {computedCourses
                     .filter(course => (formatFilter === 'all' || course.format === formatFilter) && course.type === 'capsule')
                     .map(course => {
-                      const isRegistered = myRegistrations.includes(course.id);
+                      const isRegistered = currentUserRole === 'monitor' || myRegistrations.includes(course.id);
 
                       return (
                         <CourseCard

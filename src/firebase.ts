@@ -1171,7 +1171,7 @@ Dr. Gabriel e equipe Savana Experience.`);
     }
   }
 
-  async updateUserRole(userId: string, role: 'student' | 'instructor' | 'admin') {
+  async updateUserRole(userId: string, role: 'student' | 'instructor' | 'admin' | 'monitor') {
     const board = this.getLeaderboard();
     const user = board.find(u => u.userId === userId);
     
