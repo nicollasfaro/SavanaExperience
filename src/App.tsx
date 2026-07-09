@@ -519,7 +519,11 @@ export default function App() {
 
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
-  const hasAccess = selectedCourse ? myRegistrations.includes(selectedCourse.id) : false;
+  const [isAdminPreviewing, setIsAdminPreviewing] = useState(false);
+  const [adminPreviewHasAccess, setAdminPreviewHasAccess] = useState(true);
+  const hasAccess = selectedCourse 
+    ? (isAdminPreviewing ? adminPreviewHasAccess : myRegistrations.includes(selectedCourse.id)) 
+    : false;
 
   // 5. Checkout / Payment flow state
   const [checkoutCourse, setCheckoutCourse] = useState<Course | null>(null);
@@ -528,6 +532,13 @@ export default function App() {
   const [cardNumber, setCardNumber] = useState('');
   const [cardHolder, setCardHolder] = useState('');
   const [cardCVV, setCardCVV] = useState('');
+
+  // Reset admin preview state when leaving explore tab
+  useEffect(() => {
+    if (activeTab !== 'explore') {
+      setIsAdminPreviewing(false);
+    }
+  }, [activeTab]);
 
   // Handle Stripe Success Callback Response
   useEffect(() => {
@@ -2095,11 +2106,51 @@ export default function App() {
         {/* PREMIUM COURSE LESSON CURRICULUM PLAYER */}
         {activeTab === 'explore' && selectedCourse && (
           <div className="space-y-6">
+            {isAdminPreviewing && (
+              <div className="bg-blue-500/10 border border-blue-500/20 text-blue-350 p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-sans">
+                <div className="flex items-center gap-2 text-left">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                  </span>
+                  <span>Modo: <strong>Visualização do Administrador</strong>. Você está vendo este curso como aluno.</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button 
+                    onClick={() => {
+                      setAdminPreviewHasAccess(!adminPreviewHasAccess);
+                    }}
+                    className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-850 rounded-xl border border-slate-800 text-[10px] font-bold text-slate-200 transition cursor-pointer"
+                  >
+                    {adminPreviewHasAccess ? "Ver como Não Inscrito (Bloqueado)" : "Ver como Inscrito (Com Acesso)"}
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setIsAdminPreviewing(false);
+                      setSelectedCourse(null);
+                      setActiveTab('admin');
+                    }}
+                    className="px-3 py-1.5 bg-blue-500 hover:bg-blue-450 text-slate-950 font-bold text-[10px] rounded-xl transition cursor-pointer"
+                  >
+                    Voltar ao Painel Admin
+                  </button>
+                </div>
+              </div>
+            )}
+
             <button 
-              onClick={() => setSelectedCourse(null)}
+              onClick={() => {
+                if (isAdminPreviewing) {
+                  setIsAdminPreviewing(false);
+                  setSelectedCourse(null);
+                  setActiveTab('admin');
+                } else {
+                  setSelectedCourse(null);
+                }
+              }}
               className="text-xs text-slate-400 hover:text-emerald-400 flex items-center gap-1.5 transition"
             >
-              ← Voltar para todos os cursos
+              {isAdminPreviewing ? "← Voltar para Painel Admin" : "← Voltar para todos os cursos"}
             </button>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -2906,6 +2957,18 @@ export default function App() {
             onUpdateRole={handleUpdateRole}
             currentUserId={currentUserId}
             courses={courses}
+            onPreviewCourse={(course) => {
+              setSelectedCourse(course);
+              setIsAdminPreviewing(true);
+              setAdminPreviewHasAccess(true);
+              setActiveTab('explore');
+              const mod = localDB.getModules().find(m => m.courseId === course.id);
+              if (mod && mod.lessons[0]) {
+                setSelectedLesson(mod.lessons[0]);
+              } else {
+                setSelectedLesson(null);
+              }
+            }}
           />
         )}
 

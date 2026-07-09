@@ -9,7 +9,7 @@ import {
   Shield, User, UserCheck, UserX, Search, Mail, Award, Sparkles, Filter,
   Plus, Edit, Trash2, Calendar, BookOpen, Layers, Users, Upload, Image, Loader2,
   Database, RefreshCw, CheckCircle2, AlertCircle, AlertTriangle, X, FileText, UserPlus, Send, Save, Download,
-  MoreVertical, ChevronDown
+  MoreVertical, ChevronDown, Eye
 } from 'lucide-react';
 import { CertificateSettingsPanel } from './CertificateSettingsPanel';
 
@@ -18,9 +18,10 @@ interface AdminPanelProps {
   onUpdateRole: (userId: string, role: 'student' | 'instructor' | 'admin') => void | Promise<void>;
   currentUserId: string;
   courses: Course[];
+  onPreviewCourse?: (course: Course) => void;
 }
 
-export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: initialCourses }: AdminPanelProps) {
+export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: initialCourses, onPreviewCourse }: AdminPanelProps) {
   // Navigation tabs state
   const [adminTab, setAdminTab] = useState<'users' | 'turmas' | 'courses' | 'sync' | 'rewards' | 'finance' | 'certificates' | 'pre-register'>('users');
 
@@ -1625,6 +1626,16 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                           Venda: <strong className={`font-mono font-bold uppercase tracking-wide ${c.saleType === 'whatsapp' ? 'text-emerald-400 bg-emerald-500/5 border border-emerald-500/10 px-1.5 py-0.5 rounded' : 'text-blue-400 bg-blue-500/5 border border-blue-500/10 px-1.5 py-0.5 rounded'}`}>{c.saleType === 'whatsapp' ? 'WhatsApp' : 'Website'}</strong>
                         </span>
                         <div className="flex items-center gap-2">
+                          {onPreviewCourse && (
+                            <button
+                              id={`btn-preview-course-${c.id}`}
+                              onClick={() => onPreviewCourse(c)}
+                              className="p-2 bg-slate-900 border border-slate-850 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/30 rounded-lg transition"
+                              title="Visualizar curso como aluno"
+                            >
+                              <Eye size={14} />
+                            </button>
+                          )}
                           <button
                             id={`btn-edit-course-${c.id}`}
                             onClick={() => handleOpenEditCourse(c)}
