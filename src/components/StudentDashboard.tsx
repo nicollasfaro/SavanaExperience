@@ -129,7 +129,8 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
         userAvatar: user.avatar,
         rating: reviewRating,
         comment: reviewComment,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        approved: false
       };
       
       let updatedReviews = [...reviews];
@@ -139,9 +140,10 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
         updatedReviews.push(newReview);
       }
       
-      const averageRating = parseFloat(
-        (updatedReviews.reduce((sum, r) => sum + r.rating, 0) / updatedReviews.length).toFixed(1)
-      );
+      const approvedReviews = updatedReviews.filter(r => r.approved === true);
+      const averageRating = approvedReviews.length > 0
+        ? parseFloat((approvedReviews.reduce((sum, r) => sum + r.rating, 0) / approvedReviews.length).toFixed(1))
+        : (selectedReviewCourse.rating || 4.8);
       
       const updatedCourse: Course = {
         ...selectedReviewCourse,

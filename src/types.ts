@@ -10,6 +10,7 @@ export interface CourseReview {
   createdAt: string;
   userName?: string;
   userAvatar?: string;
+  approved?: boolean;
 }
 
 export interface Course {

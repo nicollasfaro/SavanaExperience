@@ -22,7 +22,7 @@ export function CourseCard({ course, isRegistered, onSelect, onEnroll, currentUs
   const [copied, setCopied] = useState(false);
   const [isReviewsModalOpen, setIsReviewsModalOpen] = useState(false);
 
-  const reviewsList = course.reviews || [];
+  const reviewsList = (course.reviews || []).filter(r => r.approved === true);
   const reviewsCount = reviewsList.length;
   const averageRating = reviewsCount > 0 
     ? (reviewsList.reduce((acc, r) => acc + r.rating, 0) / reviewsCount).toFixed(1)
@@ -494,7 +494,7 @@ export function CourseCard({ course, isRegistered, onSelect, onEnroll, currentUs
 
               <div className="flex-1 flex flex-col gap-1.5 border-l border-slate-800/80 pl-6">
                 {[5, 4, 3, 2, 1].map((ratingVal) => {
-                  const valCount = (course.reviews || []).filter(r => r.rating === ratingVal).length;
+                  const valCount = reviewsList.filter(r => r.rating === ratingVal).length;
                   const pct = reviewsCount > 0 ? (valCount / reviewsCount) * 100 : 0;
                   return (
                     <div key={ratingVal} className="flex items-center gap-2 text-xs">
@@ -514,12 +514,12 @@ export function CourseCard({ course, isRegistered, onSelect, onEnroll, currentUs
 
             {/* Reviews List */}
             <div className="max-h-[300px] overflow-y-auto p-6 space-y-4 divide-y divide-slate-800/60 custom-scrollbar">
-              {(course.reviews || []).length === 0 ? (
+              {reviewsList.length === 0 ? (
                 <div className="text-center py-6">
                   <p className="text-sm text-slate-500 italic">Nenhuma avaliação detalhada ainda.</p>
                 </div>
               ) : (
-                (course.reviews || []).map((review, rIdx) => {
+                reviewsList.map((review, rIdx) => {
                   const ratingValue = review.rating || 5;
                   return (
                     <div key={review.userId || rIdx} className={`pt-4 ${rIdx === 0 ? 'pt-0' : ''}`}>

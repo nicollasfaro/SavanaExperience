@@ -9,7 +9,7 @@ import {
   Shield, User, UserCheck, UserX, Search, Mail, Award, Sparkles, Filter,
   Plus, Edit, Trash2, Calendar, BookOpen, Layers, Users, Upload, Image, Loader2,
   Database, RefreshCw, CheckCircle2, AlertCircle, AlertTriangle, X, FileText, UserPlus, Send, Save, Download,
-  MoreVertical, ChevronDown, Eye
+  MoreVertical, ChevronDown, Eye, Star
 } from 'lucide-react';
 import { CertificateSettingsPanel } from './CertificateSettingsPanel';
 
@@ -102,6 +102,10 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
   
   // Track specific course ID for asset mapping, plus Upload states
   const [modalCourseId, setModalCourseId] = useState('');
+
+  // 3b. Reviews management states
+  const [selectedReviewsCourse, setSelectedReviewsCourse] = useState<Course | null>(null);
+  const [showReviewsModal, setShowReviewsModal] = useState(false);
   const [uploadPercent, setUploadPercent] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -1021,6 +1025,108 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
     });
   };
 
+  // Manage Reviews Functions
+  const handleOpenManageReviews = (course: Course) => {
+    setSelectedReviewsCourse(course);
+    setShowReviewsModal(true);
+  };
+
+  const handleApproveReview = async (reviewUserId: string) => {
+    if (!selectedReviewsCourse) return;
+    try {
+      const reviews = selectedReviewsCourse.reviews || [];
+      const updatedReviews = reviews.map(r => {
+        if (r.userId === reviewUserId) {
+          return { ...r, approved: true };
+        }
+        return r;
+      });
+
+      // Recalculate average rating of only approved reviews
+      const approvedReviews = updatedReviews.filter(r => r.approved === true);
+      const averageRating = approvedReviews.length > 0 
+        ? parseFloat((approvedReviews.reduce((sum, r) => sum + r.rating, 0) / approvedReviews.length).toFixed(1))
+        : 4.8;
+
+      const updatedCourse: Course = {
+        ...selectedReviewsCourse,
+        reviews: updatedReviews,
+        rating: averageRating
+      };
+
+      await localDB.saveCourse(updatedCourse);
+      setSelectedReviewsCourse(updatedCourse);
+      showToast("Avaliação aprovada com sucesso!");
+    } catch (err) {
+      showToast("Erro ao aprovar avaliação.", "error");
+    }
+  };
+
+  const handleDisapproveReview = async (reviewUserId: string) => {
+    if (!selectedReviewsCourse) return;
+    try {
+      const reviews = selectedReviewsCourse.reviews || [];
+      const updatedReviews = reviews.map(r => {
+        if (r.userId === reviewUserId) {
+          return { ...r, approved: false };
+        }
+        return r;
+      });
+
+      // Recalculate average rating of only approved reviews
+      const approvedReviews = updatedReviews.filter(r => r.approved === true);
+      const averageRating = approvedReviews.length > 0 
+        ? parseFloat((approvedReviews.reduce((sum, r) => sum + r.rating, 0) / approvedReviews.length).toFixed(1))
+        : 4.8;
+
+      const updatedCourse: Course = {
+        ...selectedReviewsCourse,
+        reviews: updatedReviews,
+        rating: averageRating
+      };
+
+      await localDB.saveCourse(updatedCourse);
+      setSelectedReviewsCourse(updatedCourse);
+      showToast("Avaliação desativada!");
+    } catch (err) {
+      showToast("Erro ao desativar avaliação.", "error");
+    }
+  };
+
+  const handleDeleteReview = async (reviewUserId: string) => {
+    if (!selectedReviewsCourse) return;
+    setConfirmConfig({
+      title: "Excluir Avaliação",
+      description: "Tem certeza de que deseja remover esta avaliação definitivamente do sistema?",
+      confirmText: "Sim, Excluir",
+      onConfirm: async () => {
+        setConfirmConfig(null);
+        try {
+          const reviews = selectedReviewsCourse.reviews || [];
+          const updatedReviews = reviews.filter(r => r.userId !== reviewUserId);
+
+          // Recalculate average rating of only approved reviews
+          const approvedReviews = updatedReviews.filter(r => r.approved === true);
+          const averageRating = approvedReviews.length > 0 
+            ? parseFloat((approvedReviews.reduce((sum, r) => sum + r.rating, 0) / approvedReviews.length).toFixed(1))
+            : 4.8;
+
+          const updatedCourse: Course = {
+            ...selectedReviewsCourse,
+            reviews: updatedReviews,
+            rating: averageRating
+          };
+
+          await localDB.saveCourse(updatedCourse);
+          setSelectedReviewsCourse(updatedCourse);
+          showToast("Avaliação excluída permanentemente!");
+        } catch (err) {
+          showToast("Erro ao excluir avaliação.", "error");
+        }
+      }
+    });
+  };
+
   return (
     <div id="admin-panel-container" className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 relative overflow-hidden shadow-2xl">
       {/* Toast alert overlay */}
@@ -1698,6 +1804,20 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                               <Eye size={14} />
                             </button>
                           )}
+                          <button
+                            id={`btn-manage-reviews-${c.id}`}
+                            onClick={() => handleOpenManageReviews(c)}
+                            className="p-2 bg-slate-900 border border-slate-850 text-slate-400 hover:text-amber-400 hover:border-amber-500/30 rounded-lg transition relative"
+                            title="Gerenciar Avaliações"
+                          >
+                            <Star size={14} className={(c.reviews || []).some(r => r.approved === true) ? "fill-amber-400 text-amber-400" : ""} />
+                            {(c.reviews || []).filter(r => r.approved === false || r.approved === undefined).length > 0 && (
+                              <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                              </span>
+                            )}
+                          </button>
                           <button
                             id={`btn-edit-course-${c.id}`}
                             onClick={() => handleOpenEditCourse(c)}
@@ -3228,6 +3348,145 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
               </div>
 
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Gerenciamento de Avaliações */}
+      {showReviewsModal && selectedReviewsCourse && (
+        <div id="reviews-mgmt-modal" className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto pt-10 pb-10 animate-fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl p-6 shadow-2xl relative my-8">
+            <button
+              type="button"
+              onClick={() => setShowReviewsModal(false)}
+              className="absolute top-4 right-4 p-1.5 hover:bg-slate-800 rounded-full text-slate-400 hover:text-slate-200 transition cursor-pointer"
+              title="Fechar"
+            >
+              <X size={18} />
+            </button>
+
+            <h3 className="font-display text-lg font-bold text-slate-100 mb-1">
+              Avaliações do Curso
+            </h3>
+            <p className="text-xs text-blue-450 font-semibold mb-4">
+              {selectedReviewsCourse.title}
+            </p>
+
+            <div className="space-y-4">
+              {(selectedReviewsCourse.reviews || []).length === 0 ? (
+                <div className="text-center py-10 bg-slate-950/40 border border-slate-850 rounded-xl">
+                  <Star className="mx-auto text-slate-600 mb-2 fill-slate-900" size={24} />
+                  <p className="text-xs text-slate-500">Nenhum aluno avaliou este curso ainda.</p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-[450px] overflow-y-auto pr-2 custom-scrollbar font-sans">
+                  {(selectedReviewsCourse.reviews || []).map((review, rIdx) => {
+                    const isApproved = review.approved === true;
+                    return (
+                      <div 
+                        key={review.userId || rIdx} 
+                        className={`p-4 rounded-xl border transition-all ${
+                          isApproved 
+                            ? 'bg-slate-950/20 border-slate-850/50' 
+                            : 'bg-amber-500/5 border-amber-500/20 shadow-inner'
+                        }`}
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
+                          <div className="flex items-center gap-2.5">
+                            <img 
+                              src={review.userAvatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'} 
+                              alt={review.userName || 'Estudante'} 
+                              className="w-8 h-8 rounded-full border border-slate-800 object-cover shrink-0"
+                              referrerPolicy="no-referrer"
+                            />
+                            <div>
+                              <span className="block text-xs font-semibold text-slate-200">
+                                {review.userName || 'Estudante'}
+                              </span>
+                              <span className="text-[10px] text-slate-500 font-mono">
+                                {review.createdAt ? new Date(review.createdAt).toLocaleDateString('pt-BR') : 'Data não informada'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-0.5 bg-slate-950/60 px-2 py-1 rounded border border-slate-850/50">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <Star 
+                                  key={star} 
+                                  size={10} 
+                                  className={`${
+                                    star <= (review.rating || 5) 
+                                      ? "text-amber-400 fill-amber-400" 
+                                      : "text-slate-700"
+                                  }`} 
+                                />
+                              ))}
+                              <span className="text-[10px] font-mono font-bold text-slate-300 ml-1">
+                                {review.rating}
+                              </span>
+                            </div>
+
+                            {isApproved ? (
+                              <span className="text-[9px] uppercase font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-bold">
+                                Aprovado / Ativo
+                              </span>
+                            ) : (
+                              <span className="text-[9px] uppercase font-mono bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded font-bold">
+                                Pendente
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {review.comment && (
+                          <p className="text-xs text-slate-300 leading-relaxed bg-slate-950/40 p-2.5 rounded-lg border border-slate-900/60 font-sans italic mb-3">
+                            "{review.comment}"
+                          </p>
+                        )}
+
+                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-900/60">
+                          {isApproved ? (
+                            <button
+                              type="button"
+                              onClick={() => handleDisapproveReview(review.userId)}
+                              className="px-2.5 py-1 text-[10px] font-mono font-semibold text-amber-400 hover:text-amber-300 bg-amber-500/5 hover:bg-amber-500/10 border border-amber-500/10 hover:border-amber-500/25 rounded-lg transition cursor-pointer"
+                            >
+                              Ocultar do Card
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleApproveReview(review.userId)}
+                              className="px-2.5 py-1 text-[10px] font-mono font-semibold text-emerald-400 hover:text-emerald-350 bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/20 hover:border-emerald-500/35 rounded-lg transition cursor-pointer"
+                            >
+                              ✓ Aprovar & Publicar
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteReview(review.userId)}
+                            className="px-2.5 py-1 text-[10px] font-mono font-semibold text-red-400 hover:text-red-350 bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 hover:border-red-500/25 rounded-lg transition cursor-pointer"
+                          >
+                            Excluir Avaliação
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowReviewsModal(false)}
+                className="px-4 py-2 bg-slate-950 border border-slate-800 text-slate-300 hover:text-slate-100 rounded-xl text-xs font-semibold transition cursor-pointer"
+              >
+                Voltar ao Painel
+              </button>
+            </div>
           </div>
         </div>
       )}

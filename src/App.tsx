@@ -503,9 +503,10 @@ export default function App() {
 
       // 3. Calculate Real Rating
       let realRating = course.rating;
-      if (course.reviews && course.reviews.length > 0) {
-        const sum = course.reviews.reduce((acc, rev) => acc + rev.rating, 0);
-        realRating = sum / course.reviews.length;
+      const approvedReviews = (course.reviews || []).filter(rev => rev.approved === true);
+      if (approvedReviews.length > 0) {
+        const sum = approvedReviews.reduce((acc, rev) => acc + rev.rating, 0);
+        realRating = sum / approvedReviews.length;
       }
 
       return {
