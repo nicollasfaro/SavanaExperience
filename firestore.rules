@@ -56,7 +56,13 @@ service cloud.firestore {
       allow get: if isValidId(courseId) && (existing().isPublished == true || isInstructor());
       allow list: if true; // Publicly readable for the landing page
       allow create: if isInstructor() && isValidCourse(incoming()) && incoming().id == courseId;
-      allow update: if isInstructor() && isValidCourse(incoming()) && incoming().id == courseId;
+      allow update: if (isInstructor() && isValidCourse(incoming()) && incoming().id == courseId)
+                    || (
+                      isSignedIn()
+                      && isValidCourse(incoming())
+                      && incoming().id == courseId
+                      && incoming().diff(existing()).affectedKeys().hasOnly(['reviews', 'rating'])
+                    );
       allow delete: if isInstructor();
     }
 
@@ -118,7 +124,7 @@ service cloud.firestore {
     }
 
     match /leaderboard/{userId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow create: if isSignedIn() && isValidId(userId) && (userId == request.auth.uid || isInstructor());
       allow update: if isSignedIn() && (
         isInstructor() ||

@@ -343,7 +343,7 @@ class StorageEngine {
       if (this.isFirebaseAuthenticated) {
         handleFirestoreError(err, OperationType.LIST, 'leaderboard');
       } else {
-        console.error("Leaderboard Snapshot error:", err.message);
+        console.warn("Leaderboard Snapshot error:", err.message);
       }
     });
     this.activeUnsubscribes.push(unsubLeaderboard);
@@ -807,7 +807,16 @@ Dr. Gabriel e equipe Savana Experience.`);
 
     // Firestore Sync
     try {
-      await setDoc(doc(db, 'courses', course.id), cleanUndefined(course));
+      const isInstructor = auth.currentUser?.email === 'ciuldinciuldin@gmail.com' || 
+                           this.getLeaderboard().find(u => u.userId === auth.currentUser?.uid)?.role === 'instructor';
+      if (isInstructor) {
+        await setDoc(doc(db, 'courses', course.id), cleanUndefined(course));
+      } else {
+        await updateDoc(doc(db, 'courses', course.id), {
+          reviews: cleanUndefined(course.reviews || []),
+          rating: course.rating || 5
+        });
+      }
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `courses/${course.id}`);
     }

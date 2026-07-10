@@ -17,6 +17,7 @@
         "modulesCount": { "type": "integer" },
         "enrolledCount": { "type": "integer" },
         "rating": { "type": "number" },
+        "reviews": { "type": "array" },
         "isPublished": { "type": "boolean" }
       },
       "required": ["id", "title", "price", "xpReward"]
