@@ -4,7 +4,7 @@ import { CourseCard } from './CourseCard';
 import { 
   GraduationCap, BookOpen, Shield, Trophy, Sparkles, Zap, Award, 
   CheckCircle2, ArrowRight, Video, Search, Heart, Users, MapPin, CheckSquare, Star, Play,
-  X, ChevronRight, Clock, PlayCircle, FileText, HelpCircle, Lock
+  X, ChevronRight, Clock, PlayCircle, FileText, HelpCircle, Lock, Instagram, MessageCircle
 } from 'lucide-react';
 import { localDB } from '../firebase';
 
@@ -416,6 +416,42 @@ export function LandingPage({ courses, onJoin, onSelectCourse, logoComponent: Sa
         )}
       </section>
 
+      {/* Instagram Section */}
+      <section className="bg-slate-950/60 border-t border-slate-900 py-16 relative z-10 px-4">
+        <div className="max-w-4xl mx-auto bg-slate-900/40 border border-slate-900/80 rounded-3xl p-8 sm:p-10 text-center relative overflow-hidden shadow-xl">
+          {/* Subtle background radial light */}
+          <div className="absolute -top-24 -left-24 w-48 h-48 bg-pink-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-rose-500/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="relative z-10 space-y-6">
+            <div className="inline-flex items-center gap-2 bg-pink-500/10 text-pink-500 px-3 py-1 rounded-full text-[10px] uppercase font-mono tracking-wider font-extrabold mx-auto">
+              <Instagram size={12} />
+              <span>Instagram Oficial</span>
+            </div>
+            
+            <h2 className="font-display text-2xl sm:text-3xl font-black text-slate-100 tracking-tight max-w-lg mx-auto leading-tight">
+              Acompanhe o dia a dia da medicina veterinária no <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-rose-400">@savanaxp</span>
+            </h2>
+            
+            <p className="text-slate-400 text-xs sm:text-sm max-w-xl mx-auto leading-relaxed">
+              Siga nosso perfil oficial para acompanhar casos clínicos reais de animais silvestres e exóticos, dicas de manejo veterinário, bastidores imperdíveis das nossas aulas presenciais e atualizações da nossa comunidade.
+            </p>
+
+            <div className="pt-2">
+              <a 
+                href="https://www.instagram.com/savanaxp/" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2.5 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white font-extrabold px-6 py-3 rounded-xl text-xs sm:text-sm transition duration-150 shadow-lg shadow-pink-500/15 cursor-pointer hover:scale-[1.02]"
+              >
+                <Instagram size={16} />
+                <span>Seguir @savanaxp no Instagram</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* CTA Section */}
       <section className="bg-gradient-to-r from-emerald-950/60 via-teal-950/30 to-emerald-950/40 border-t border-slate-900 py-20 relative z-10 text-center px-4">
         <div className="max-w-3xl mx-auto space-y-6">
@@ -583,6 +619,7 @@ export function LandingPage({ courses, onJoin, onSelectCourse, logoComponent: Sa
           </div>
         );
       })()}
+
     </div>
   );
 }
