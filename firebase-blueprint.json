@@ -10,6 +10,7 @@
         "description": { "type": "string", "description": "In-depth summary" },
         "category": { "type": "string" },
         "instructorName": { "type": "string" },
+        "instructorInstagram": { "type": "string" },
         "thumbnail": { "type": "string", "format": "uri" },
         "price": { "type": "number" },
         "xpReward": { "type": "integer" },

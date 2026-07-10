@@ -82,6 +82,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
   const [courseDescription, setCourseDescription] = useState('');
   const [courseCategory, setCourseCategory] = useState('');
   const [courseInstructorName, setCourseInstructorName] = useState('');
+  const [courseInstructorInstagram, setCourseInstructorInstagram] = useState('');
   const [isCustomInstructor, setIsCustomInstructor] = useState(false);
   const [courseThumbnail, setCourseThumbnail] = useState('');
   const [coursePrice, setCoursePrice] = useState(0);
@@ -398,6 +399,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
     setCourseDescription('');
     setCourseCategory('Neurologia');
     setCourseInstructorName(instructors[0]?.name || 'Equipe Savana Experience');
+    setCourseInstructorInstagram('');
     setIsCustomInstructor(false);
     setCourseThumbnail('https://images.unsplash.com/photo-1576091160550-2173dba999ef?w=600&auto=format&fit=crop&q=80');
     setCoursePrice(1490);
@@ -436,6 +438,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
     const isPreset = instructors.some(ins => ins.name === c.instructorName) || c.instructorName === 'Equipe Savana Experience';
     setIsCustomInstructor(!isPreset);
     setCourseInstructorName(c.instructorName || 'Equipe Savana Experience');
+    setCourseInstructorInstagram(c.instructorInstagram || '');
     setCourseThumbnail(c.thumbnail || 'https://images.unsplash.com/photo-1576091160550-2173dba999ef?w=600&auto=format&fit=crop&q=80');
     setCoursePrice(c.price || 0);
     setCourseXpReward(c.xpReward || 1000);
@@ -489,6 +492,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
       description: courseDescription || '',
       category: courseCategory || 'Geral',
       instructorName: courseInstructorName || 'Equipe Savana Experience',
+      instructorInstagram: courseInstructorInstagram || '',
       thumbnail: courseThumbnail || 'https://images.unsplash.com/photo-1576091160550-2173dba999ef?w=600&auto=format&fit=crop&q=80',
       price: Number(coursePrice) || 0,
       xpReward: Number(courseXpReward) || 1000,
@@ -2193,6 +2197,19 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                     )}
                   </div>
                 </div>
+              </div>
+
+              {/* Instagram do Docente */}
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider font-mono text-slate-400 mb-1.5">Instagram do Docente (opcional)</label>
+                <input
+                  id="modal-course-instructor-instagram"
+                  type="text"
+                  placeholder="Ex: @lucas_vet"
+                  value={courseInstructorInstagram}
+                  onChange={(e) => setCourseInstructorInstagram(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500"
+                />
               </div>
 
               {/* Thumbnail Upload & URL Input */}

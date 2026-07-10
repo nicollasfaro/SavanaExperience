@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Course, Redemption } from '../types';
 import { localDB } from '../firebase';
-import { GraduationCap, Clock, Award, MessageCircle, Share2, Twitter, Linkedin, Link, Check, Tag, Star, X } from 'lucide-react';
+import { GraduationCap, Clock, Award, MessageCircle, Share2, Twitter, Linkedin, Link, Check, Tag, Star, X, Instagram } from 'lucide-react';
 
 interface CourseCardProps {
   key?: string;
@@ -124,9 +124,24 @@ export function CourseCard({ course, isRegistered, onSelect, onEnroll, currentUs
         </h3>
         
         {course.instructorName && (
-          <p className="text-[11px] text-slate-400 mt-1.5 font-medium flex items-center gap-1">
-            <span className="text-blue-450 font-bold">Dr(a):</span>
-            <span className="text-slate-300">{course.instructorName}</span>
+          <p className="text-[11px] text-slate-400 mt-1.5 font-medium flex items-center gap-1.5 flex-wrap">
+            <span className="flex items-center gap-1">
+              <span className="text-blue-450 font-bold">Dr(a):</span>
+              <span className="text-slate-300">{course.instructorName}</span>
+            </span>
+            {course.instructorInstagram && course.instructorInstagram.trim() !== '' && (
+              <a
+                href={`https://instagram.com/${course.instructorInstagram.replace('@', '').trim()}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-0.5 text-[10px] text-pink-400 hover:text-pink-300 transition-colors bg-pink-500/5 hover:bg-pink-500/10 border border-pink-500/10 hover:border-pink-500/20 px-1.5 py-0.5 rounded-md font-mono"
+                title={`Instagram de ${course.instructorName}`}
+              >
+                <Instagram size={10} className="stroke-[2.5px]" />
+                <span>@{course.instructorInstagram.replace('@', '').trim()}</span>
+              </a>
+            )}
           </p>
         )}
 

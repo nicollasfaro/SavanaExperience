@@ -20,6 +20,7 @@ export interface Course {
   description: string;
   category: string;
   instructorName: string;
+  instructorInstagram?: string;
   thumbnail: string;
   price: number;
   xpReward: number;
