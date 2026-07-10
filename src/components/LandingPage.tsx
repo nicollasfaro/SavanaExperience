@@ -4,7 +4,8 @@ import { CourseCard } from './CourseCard';
 import { 
   GraduationCap, BookOpen, Shield, Trophy, Sparkles, Zap, Award, 
   CheckCircle2, ArrowRight, Video, Search, Heart, Users, MapPin, CheckSquare, Star, Play,
-  X, ChevronRight, Clock, PlayCircle, FileText, HelpCircle, Lock, Instagram, MessageCircle
+  X, ChevronRight, Clock, PlayCircle, FileText, HelpCircle, Lock, Instagram, MessageCircle,
+  Quote
 } from 'lucide-react';
 import { localDB } from '../firebase';
 
@@ -42,6 +43,38 @@ export function LandingPage({ courses, onJoin, onSelectCourse, logoComponent: Sa
 
   const mainCourses = filteredCourses.filter(c => c.type !== 'capsule');
   const capsuleCourses = filteredCourses.filter(c => c.type === 'capsule');
+
+  // Get testimonials from course reviews
+  const testimonials = useMemo(() => {
+    const list: {
+      id: string;
+      userName: string;
+      userAvatar?: string;
+      comment: string;
+      rating: number;
+      courseTitle: string;
+    }[] = [];
+
+    courses.forEach(course => {
+      if (course.reviews) {
+        course.reviews.forEach((review, idx) => {
+          // Check for approved reviews that have comments
+          if (review.approved === true && review.comment && review.comment.trim() !== '') {
+            list.push({
+              id: `${course.id}-review-${review.userId || idx}`,
+              userName: review.userName || 'Estudante Savana',
+              userAvatar: review.userAvatar,
+              comment: review.comment,
+              rating: review.rating,
+              courseTitle: course.title
+            });
+          }
+        });
+      }
+    });
+
+    return list;
+  }, [courses]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">
@@ -415,6 +448,86 @@ export function LandingPage({ courses, onJoin, onSelectCourse, logoComponent: Sa
           </>
         )}
       </section>
+
+      {/* Testimonials Section */}
+      {testimonials.length > 0 && (
+        <section className="bg-slate-950/40 border-t border-slate-900 py-20 relative z-10 px-4">
+          <div className="max-w-7xl mx-auto space-y-12">
+            {/* Header */}
+            <div className="text-center space-y-3">
+              <div className="inline-flex items-center gap-2 bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded-full text-[10px] uppercase font-mono tracking-wider font-extrabold">
+                <Users size={12} />
+                <span>Depoimentos Reais</span>
+              </div>
+              <h2 className="font-display text-2xl sm:text-4xl font-black text-slate-100 tracking-tight">
+                O que dizem os nossos alunos
+              </h2>
+              <p className="text-slate-400 text-xs sm:text-sm max-w-2xl mx-auto leading-relaxed">
+                Descubra como médicos veterinários e graduandos de todo o Brasil transformaram suas rotinas clínicas e alcançaram a excelência no atendimento de animais silvestres e exóticos.
+              </p>
+            </div>
+
+            {/* Testimonial Cards Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
+              {testimonials.map((testimonial) => (
+                <div 
+                  key={testimonial.id}
+                  className="bg-slate-900/50 border border-slate-900 rounded-3xl p-6 sm:p-8 relative flex flex-col justify-between shadow-xl transition duration-150 hover:border-slate-800"
+                >
+                  <div className="absolute top-6 right-6 text-emerald-500/10">
+                    <Quote size={40} className="stroke-[3px]" />
+                  </div>
+                  
+                  <div className="space-y-4">
+                    {/* Stars */}
+                    <div className="flex items-center gap-1">
+                      {[...Array(5)].map((_, i) => (
+                        <Star 
+                          key={i} 
+                          size={14} 
+                          className={i < testimonial.rating ? "fill-emerald-400 text-emerald-400" : "text-slate-700"} 
+                        />
+                      ))}
+                    </div>
+
+                    <p className="text-slate-300 text-xs sm:text-sm leading-relaxed font-sans italic">
+                      "{testimonial.comment}"
+                    </p>
+                  </div>
+
+                  {/* Author Info */}
+                  <div className="flex items-center gap-3.5 mt-6 pt-6 border-t border-slate-900">
+                    {testimonial.userAvatar ? (
+                      <img 
+                        src={testimonial.userAvatar} 
+                        alt={testimonial.userName} 
+                        className="w-10 h-10 rounded-full object-cover shadow-md border border-slate-800 shrink-0"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white font-extrabold text-sm shadow-md shrink-0">
+                        {testimonial.userName.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-extrabold text-slate-200 leading-tight">
+                        {testimonial.userName}
+                      </h4>
+                      <p className="text-[10px] text-slate-400 mt-1 leading-snug">
+                        Avaliação do curso: <span className="text-emerald-400 font-semibold">{testimonial.courseTitle}</span>
+                      </p>
+                      <span className="inline-flex items-center gap-1 text-[9px] text-emerald-400/80 font-bold mt-1">
+                        <CheckCircle2 size={10} className="fill-emerald-500/10" />
+                        Aluno Verificado
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Instagram Section */}
       <section className="bg-slate-950/60 border-t border-slate-900 py-16 relative z-10 px-4">
