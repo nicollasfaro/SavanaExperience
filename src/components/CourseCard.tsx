@@ -15,9 +15,10 @@ interface CourseCardProps {
   onSelect: () => void;
   onEnroll: (coupon?: Redemption) => void;
   currentUserId?: string;
+  isLandingMode?: boolean;
 }
 
-export function CourseCard({ course, isRegistered, onSelect, onEnroll, currentUserId }: CourseCardProps) {
+export function CourseCard({ course, isRegistered, onSelect, onEnroll, currentUserId, isLandingMode }: CourseCardProps) {
   const [showShareOptions, setShowShareOptions] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isReviewsModalOpen, setIsReviewsModalOpen] = useState(false);
@@ -234,6 +235,15 @@ export function CourseCard({ course, isRegistered, onSelect, onEnroll, currentUs
           </div>
         )}
 
+        {isLandingMode && (
+          <div className="mt-3.5 p-2 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+            <span className="text-[10px] text-amber-400 font-semibold leading-tight">
+              Acesse o ambiente do aluno para se matricular
+            </span>
+          </div>
+        )}
+
         {/* Pricing / CTA Section */}
         <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-800/80">
           <div>
@@ -416,7 +426,15 @@ export function CourseCard({ course, isRegistered, onSelect, onEnroll, currentUs
                 )}
               </div>
 
-              {course.saleType === 'whatsapp' ? (
+              {isLandingMode ? (
+                <button
+                  id={`enroll-btn-landing-${course.id}`}
+                  onClick={() => onEnroll()}
+                  className="px-3 py-2 text-xs font-bold rounded-xl bg-emerald-500 text-slate-950 hover:bg-emerald-450 hover:shadow-lg hover:shadow-emerald-500/25 transition-all duration-200 cursor-pointer"
+                >
+                  Entrar p/ Inscrição
+                </button>
+              ) : course.saleType === 'whatsapp' ? (
                 <a
                   id={`enroll-btn-${course.id}`}
                   href={getWhatsappLink()}

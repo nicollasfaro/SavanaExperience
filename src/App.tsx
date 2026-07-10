@@ -20,11 +20,12 @@ import { Store } from './components/Store';
 import { StudentDashboard } from './components/StudentDashboard';
 import { CertificateModal } from './components/CertificateModal';
 import { CertificateValidator } from './components/CertificateValidator';
+import { LandingPage } from './components/LandingPage';
 import { 
   Trophy, BookOpen, Sun, Moon, Sparkles, MessageSquare, Play, CheckCircle2, 
   HelpCircle, CreditCard, ChevronRight, Download, Calendar, ShieldCheck, Clock, 
   Settings, Award, Wifi, WifiOff, Fingerprint, Lock, CheckSquare, Bell, Shield, Gift, Menu, X,
-  Video
+  Video, Search
 } from 'lucide-react';
 
 export function SavanaLogo({ className = "w-10 h-10" }: { className?: string }) {
@@ -451,14 +452,25 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'explore' | 'forum' | 'leaderboard' | 'instructor' | 'admin' | 'classroom' | 'store' | 'dashboard'>('explore');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [formatFilter, setFormatFilter] = useState<'all' | 'online' | 'recorded' | 'presencial'>('all');
+  const [courseSearchQuery, setCourseSearchQuery] = useState('');
+  const [viewingLogin, setViewingLogin] = useState<boolean>(false);
   const [viewingCertificate, setViewingCertificate] = useState(false);
   const [showCertificateValidator, setShowCertificateValidator] = useState(false);
 
   // 4. Data states loading from localStorage localDB
   const [courses, setCourses] = useState<Course[]>(() => localDB.getCourses());
+  const [coursesLoading, setCoursesLoading] = useState<boolean>(true);
   const [modules, setModules] = useState<CourseModule[]>(() => localDB.getModules());
   const [turmas, setTurmas] = useState<Turma[]>(() => localDB.getTurmas());
   const [rewards, setRewards] = useState(() => localDB.getRewards());
+
+  // Fallback loading timer for courses if Firebase is initially slow or offline
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setCoursesLoading(false);
+    }, 4500);
+    return () => clearTimeout(timer);
+  }, []);
 
   const myRegistrations = React.useMemo(() => {
     const fromTurmas = turmas.filter(t => t.studentIds?.includes(currentUserId)).map(t => t.courseId);
@@ -752,6 +764,7 @@ export default function App() {
   useEffect(() => {
     const unsubCourses = localDB.onChange('courses', () => {
       setCourses(localDB.getCourses());
+      setCoursesLoading(false);
     });
     const unsubLeaderboard = localDB.onChange('leaderboard', () => {
       setAllLeaderboard(localDB.getLeaderboard());
@@ -1147,7 +1160,33 @@ export default function App() {
     );
   }
 
-  if (!authUser) {
+  const isGuest = !authUser || authUser.isAnonymous;
+
+  if (isGuest && !viewingLogin) {
+    return (
+      <>
+        <LandingPage
+          courses={computedCourses}
+          isLoading={coursesLoading}
+          onJoin={() => setViewingLogin(true)}
+          onSelectCourse={(course) => {
+            alert(`Para matricular-se ou acessar "${course.title}", faça login ou crie sua conta no Ambiente do Aluno!`);
+            setViewingLogin(true);
+          }}
+          logoComponent={SavanaLogo}
+          onShowValidator={() => setShowCertificateValidator(true)}
+        />
+        {showCertificateValidator && (
+          <CertificateValidator
+            isOpen={showCertificateValidator}
+            onClose={() => setShowCertificateValidator(false)}
+          />
+        )}
+      </>
+    );
+  }
+
+  if (isGuest) {
     return (
       <div className={`min-h-screen flex flex-col items-center justify-center p-4 transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
         <div className={`${showRegisterForm ? 'max-w-lg' : 'max-w-md'} w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center shadow-2xl relative overflow-hidden transition-all duration-300`}>
@@ -1409,14 +1448,22 @@ export default function App() {
           </div>
         </div>
 
-        {/* Guest Validation Access */}
-        <button
-          onClick={() => setShowCertificateValidator(true)}
-          className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 border border-slate-800 hover:border-slate-700 hover:bg-slate-850 text-slate-300 hover:text-white rounded-full text-xs font-semibold shadow-lg transition duration-205 cursor-pointer"
-        >
-          <Award size={14} className="text-emerald-450 text-emerald-400" />
-          <span>Validar Autenticidade de Certificado</span>
-        </button>
+        <div className="flex flex-col sm:flex-row items-center gap-3 mt-5">
+          <button
+            onClick={() => setViewingLogin(false)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 border border-slate-800 hover:border-slate-750 hover:bg-slate-850 text-slate-300 hover:text-white rounded-full text-xs font-semibold shadow-lg transition duration-200 cursor-pointer"
+          >
+            <span>← Voltar à Página Inicial</span>
+          </button>
+          
+          <button
+            onClick={() => setShowCertificateValidator(true)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 border border-slate-800 hover:border-slate-750 hover:bg-slate-850 text-slate-300 hover:text-white rounded-full text-xs font-semibold shadow-lg transition duration-200 cursor-pointer"
+          >
+            <Award size={14} className="text-emerald-450 text-emerald-400" />
+            <span>Validar Autenticidade de Certificado</span>
+          </button>
+        </div>
 
         {showCertificateValidator && (
           <CertificateValidator
@@ -1987,140 +2034,180 @@ export default function App() {
             {/* Courses Catalog listings */}
             <div>
               {/* Cursos Disponíveis */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-                <div>
-                  <h2 className="font-display text-xl font-bold text-slate-100">
-                    Cursos Disponíveis
-                  </h2>
-                  <p className="text-xs text-slate-400 mt-0.5">Explore nossos treinamentos veterinários especializados nos 3 formatos oferecidos.</p>
-                </div>
-
-                {/* Format Filter Toggles */}
-                <div className="flex items-center gap-1.5 bg-slate-950 p-1.5 rounded-xl border border-slate-850 self-start sm:self-auto overflow-x-auto max-w-full scrollbar-none">
-                  <button
-                    id="filter-format-all"
-                    onClick={() => setFormatFilter('all')}
-                    className={`px-3 py-1.5 text-[10px] font-bold rounded-lg uppercase tracking-wider transition shrink-0 ${
-                      formatFilter === 'all' ? 'bg-emerald-500 text-slate-950 font-extrabold' : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    Todos
-                  </button>
-                  <button
-                    id="filter-format-online"
-                    onClick={() => setFormatFilter('online')}
-                    className={`px-3 py-1.5 text-[10px] font-bold rounded-lg uppercase tracking-wider transition shrink-0 flex items-center gap-1.5 ${
-                      formatFilter === 'online' ? 'bg-rose-500 text-white font-extrabold' : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-rose-450 animate-pulse" />
-                    Ao Vivo
-                  </button>
-                  <button
-                    id="filter-format-recorded"
-                    onClick={() => setFormatFilter('recorded')}
-                    className={`px-3 py-1.5 text-[10px] font-bold rounded-lg uppercase tracking-wider transition shrink-0 flex items-center gap-1 ${
-                      formatFilter === 'recorded' ? 'bg-indigo-600 text-indigo-150 font-extrabold' : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    📼 Gravados
-                  </button>
-                  <button
-                    id="filter-format-presencial"
-                    onClick={() => setFormatFilter('presencial')}
-                    className={`px-3 py-1.5 text-[10px] font-bold rounded-lg uppercase tracking-wider transition shrink-0 flex items-center gap-1 ${
-                      formatFilter === 'presencial' ? 'bg-amber-600 text-white font-extrabold' : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    📍 Presenciais
-                  </button>
-                </div>
+              <div className="mb-6">
+                <h2 className="font-display text-xl font-bold text-slate-100">
+                  Cursos Disponíveis
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">Explore nossos treinamentos veterinários especializados nos 3 formatos oferecidos.</p>
               </div>
 
-              {computedCourses.filter(course => (formatFilter === 'all' || course.format === formatFilter) && course.type !== 'capsule').length === 0 ? (
-                <div className="text-center py-12 bg-slate-900/40 border border-slate-850 rounded-2xl mb-12">
-                  <p className="text-sm text-slate-400">Nenhum curso disponível neste formato no momento.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
-                  {computedCourses
-                    .filter(course => (formatFilter === 'all' || course.format === formatFilter) && course.type !== 'capsule')
-                    .map(course => {
-                      const isRegistered = currentUserRole === 'monitor' || myRegistrations.includes(course.id);
-
-                      return (
-                        <CourseCard
-                          key={course.id}
-                          course={course}
-                          isRegistered={isRegistered}
-                          onSelect={() => {
-                            setSelectedCourse(course);
-                            const mod = localDB.getModules().find(m => m.courseId === course.id);
-                            if (mod && mod.lessons[0]) {
-                              setSelectedLesson(mod.lessons[0]);
-                            } else {
-                              setSelectedLesson(null);
-                            }
-                          }}
-                          onEnroll={(coupon) => {
-                            setCheckoutCourse(course);
-                            setAppliedCoupon(coupon || null);
-                            setCheckoutStep('form');
-                          }}
-                          currentUserId={currentUserId}
+              {(() => {
+                const searchNormalized = courseSearchQuery.toLowerCase().trim();
+                const filteredAll = computedCourses.filter(course => {
+                  const matchesFormat = formatFilter === 'all' || course.format === formatFilter;
+                  const matchesSearch = !searchNormalized || 
+                    course.title.toLowerCase().includes(searchNormalized) ||
+                    course.description.toLowerCase().includes(searchNormalized) ||
+                    (course.instructorName && course.instructorName.toLowerCase().includes(searchNormalized));
+                  return matchesFormat && matchesSearch;
+                });
+                const mainCourses = filteredAll.filter(c => c.type !== 'capsule');
+                const capsuleCourses = filteredAll.filter(c => c.type === 'capsule');
+                
+                return (
+                  <>
+                    {/* Search and Filters panel */}
+                    <div className="bg-slate-900/40 border border-slate-850 p-4 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                      {/* Search Input */}
+                      <div className="relative flex-1 max-w-md w-full">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-500">
+                          <Search size={16} />
+                        </span>
+                        <input
+                          type="text"
+                          placeholder="Buscar por título, descrição ou instrutor..."
+                          value={courseSearchQuery}
+                          onChange={(e) => setCourseSearchQuery(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-850 hover:border-slate-800 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 rounded-xl py-2 pl-10 pr-8 text-xs text-slate-200 placeholder-slate-500 outline-none transition"
                         />
-                      );
-                    })}
-                </div>
-              )}
+                        {courseSearchQuery && (
+                          <button
+                            onClick={() => setCourseSearchQuery('')}
+                            className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-500 hover:text-slate-300 text-xs font-semibold"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
 
-              {/* Cápsulas de Conhecimento */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-                <div>
-                  <h2 className="font-display text-xl font-bold text-slate-100 flex items-center gap-2">
-                    <Sparkles className="text-blue-400" />
-                    Cápsulas de Conhecimento
-                  </h2>
-                  <p className="text-xs text-slate-400 mt-0.5">Aprenda conteúdos rápidos, focados em tópicos essenciais e ganhe XP.</p>
-                </div>
-              </div>
+                      {/* Format Filter Toggles */}
+                      <div className="flex items-center gap-1.5 bg-slate-950 p-1.5 rounded-xl border border-slate-850 self-start md:self-auto overflow-x-auto max-w-full scrollbar-none">
+                        <button
+                          id="filter-format-all"
+                          onClick={() => setFormatFilter('all')}
+                          className={`px-3 py-1.5 text-[10px] font-bold rounded-lg uppercase tracking-wider transition shrink-0 ${
+                            formatFilter === 'all' ? 'bg-emerald-500 text-slate-950 font-extrabold' : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          Todos
+                        </button>
+                        <button
+                          id="filter-format-online"
+                          onClick={() => setFormatFilter('online')}
+                          className={`px-3 py-1.5 text-[10px] font-bold rounded-lg uppercase tracking-wider transition shrink-0 flex items-center gap-1.5 ${
+                            formatFilter === 'online' ? 'bg-rose-500 text-white font-extrabold' : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-450 animate-pulse" />
+                          Ao Vivo
+                        </button>
+                        <button
+                          id="filter-format-recorded"
+                          onClick={() => setFormatFilter('recorded')}
+                          className={`px-3 py-1.5 text-[10px] font-bold rounded-lg uppercase tracking-wider transition shrink-0 flex items-center gap-1 ${
+                            formatFilter === 'recorded' ? 'bg-indigo-600 text-indigo-150 font-extrabold' : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          📼 Gravados
+                        </button>
+                        <button
+                          id="filter-format-presencial"
+                          onClick={() => setFormatFilter('presencial')}
+                          className={`px-3 py-1.5 text-[10px] font-bold rounded-lg uppercase tracking-wider transition shrink-0 flex items-center gap-1 ${
+                            formatFilter === 'presencial' ? 'bg-amber-600 text-white font-extrabold' : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          📍 Presenciais
+                        </button>
+                      </div>
+                    </div>
 
-              {computedCourses.filter(course => (formatFilter === 'all' || course.format === formatFilter) && course.type === 'capsule').length === 0 ? (
-                <div className="text-center py-12 bg-slate-900/40 border border-slate-850 rounded-2xl">
-                  <p className="text-sm text-slate-400">Nenhuma cápsula disponível neste formato no momento.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {computedCourses
-                    .filter(course => (formatFilter === 'all' || course.format === formatFilter) && course.type === 'capsule')
-                    .map(course => {
-                      const isRegistered = currentUserRole === 'monitor' || myRegistrations.includes(course.id);
+                    {/* Standard Courses */}
+                    {mainCourses.length === 0 ? (
+                      <div className="text-center py-12 bg-slate-900/40 border border-slate-850 rounded-2xl mb-12">
+                        <p className="text-sm text-slate-400">
+                          {courseSearchQuery ? 'Nenhum curso corresponde à sua busca.' : 'Nenhum curso disponível neste formato no momento.'}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+                        {mainCourses.map(course => {
+                          const isRegistered = currentUserRole === 'monitor' || myRegistrations.includes(course.id);
+                          return (
+                            <CourseCard
+                              key={course.id}
+                              course={course}
+                              isRegistered={isRegistered}
+                              onSelect={() => {
+                                setSelectedCourse(course);
+                                const mod = localDB.getModules().find(m => m.courseId === course.id);
+                                if (mod && mod.lessons[0]) {
+                                  setSelectedLesson(mod.lessons[0]);
+                                } else {
+                                  setSelectedLesson(null);
+                                }
+                              }}
+                              onEnroll={(coupon) => {
+                                setCheckoutCourse(course);
+                                setAppliedCoupon(coupon || null);
+                                setCheckoutStep('form');
+                              }}
+                              currentUserId={currentUserId}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
 
-                      return (
-                        <CourseCard
-                          key={course.id}
-                          course={course}
-                          isRegistered={isRegistered}
-                          onSelect={() => {
-                            setSelectedCourse(course);
-                            const mod = localDB.getModules().find(m => m.courseId === course.id);
-                            if (mod && mod.lessons[0]) {
-                              setSelectedLesson(mod.lessons[0]);
-                            } else {
-                              setSelectedLesson(null);
-                            }
-                          }}
-                          onEnroll={(coupon) => {
-                            setCheckoutCourse(course);
-                            setAppliedCoupon(coupon || null);
-                            setCheckoutStep('form');
-                          }}
-                          currentUserId={currentUserId}
-                        />
-                      );
-                    })}
-                </div>
-              )}
+                    {/* Cápsulas de Conhecimento */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                      <div>
+                        <h2 className="font-display text-xl font-bold text-slate-100 flex items-center gap-2">
+                          <Sparkles className="text-blue-400" />
+                          Cápsulas de Conhecimento
+                        </h2>
+                        <p className="text-xs text-slate-400 mt-0.5">Aprenda conteúdos rápidos, focados em tópicos essenciais e ganhe XP.</p>
+                      </div>
+                    </div>
+
+                    {capsuleCourses.length === 0 ? (
+                      <div className="text-center py-12 bg-slate-900/40 border border-slate-850 rounded-2xl">
+                        <p className="text-sm text-slate-400">
+                          {courseSearchQuery ? 'Nenhuma cápsula corresponde à sua busca.' : 'Nenhuma cápsula disponível neste formato no momento.'}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {capsuleCourses.map(course => {
+                          const isRegistered = currentUserRole === 'monitor' || myRegistrations.includes(course.id);
+                          return (
+                            <CourseCard
+                              key={course.id}
+                              course={course}
+                              isRegistered={isRegistered}
+                              onSelect={() => {
+                                setSelectedCourse(course);
+                                const mod = localDB.getModules().find(m => m.courseId === course.id);
+                                if (mod && mod.lessons[0]) {
+                                  setSelectedLesson(mod.lessons[0]);
+                                } else {
+                                  setSelectedLesson(null);
+                                }
+                              }}
+                              onEnroll={(coupon) => {
+                                setCheckoutCourse(course);
+                                setAppliedCoupon(coupon || null);
+                                setCheckoutStep('form');
+                              }}
+                              currentUserId={currentUserId}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
         )}

@@ -52,9 +52,9 @@ service cloud.firestore {
         && data.isPublished is bool;
     }
 
-    match /courses/{courseId} {
+     match /courses/{courseId} {
       allow get: if isValidId(courseId) && (existing().isPublished == true || isInstructor());
-      allow list: if isSignedIn(); // Filtered list
+      allow list: if true; // Publicly readable for the landing page
       allow create: if isInstructor() && isValidCourse(incoming()) && incoming().id == courseId;
       allow update: if isInstructor() && isValidCourse(incoming()) && incoming().id == courseId;
       allow delete: if isInstructor();
@@ -70,8 +70,8 @@ service cloud.firestore {
     }
 
     match /courses/{courseId}/modules/{moduleId} {
-      allow get: if isSignedIn() && isValidId(courseId) && isValidId(moduleId);
-      allow list: if isSignedIn() && isValidId(courseId);
+      allow get: if isValidId(courseId) && isValidId(moduleId); // Publicly readable for landing page details
+      allow list: if isValidId(courseId); // Publicly readable for landing page details
       allow create: if isInstructor() && isValidModule(incoming()) && incoming().id == moduleId;
       allow update: if isInstructor() && isValidModule(incoming()) && incoming().id == moduleId;
       allow delete: if isInstructor();

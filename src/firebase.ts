@@ -277,6 +277,8 @@ class StorageEngine {
           await signInAnonymously(auth);
         } catch (anonErr) {
           console.warn('Failed to sign in anonymously to Firestore:', anonErr);
+          console.log('Anonymous sign-in disabled or failed. Setting up real-time listeners for guest user as fallback...');
+          this.setupRealtimeListeners();
         }
       }
     });
