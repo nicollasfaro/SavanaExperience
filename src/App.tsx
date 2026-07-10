@@ -1570,7 +1570,7 @@ export default function App() {
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                Dash
+                Perfil
               </button>
 
               <button
