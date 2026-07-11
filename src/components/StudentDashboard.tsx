@@ -96,6 +96,14 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
   const [savingReview, setSavingReview] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  const showLocalToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast(null);
+    }, 4000);
+  };
 
   // Synchronize previously saved rating and comment
   useEffect(() => {
@@ -152,9 +160,18 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
       };
       
       await localDB.saveCourse(updatedCourse);
+      
+      if (existingIndex < 0) {
+        await localDB.updateLeaderboardXP(user.userId, 20);
+        showLocalToast("Avaliação salva com sucesso! Você ganhou +20 XP! 🎉", "success");
+      } else {
+        showLocalToast("Avaliação atualizada com sucesso!", "success");
+      }
+      
       setSelectedReviewCourse(null);
     } catch (err) {
       console.error("Error saving course review:", err);
+      showLocalToast("Erro ao salvar avaliação.", "error");
     } finally {
       setSavingReview(false);
     }
@@ -462,11 +479,23 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
                 const isCourseCompleted = totalLessonsCount > 0 && completedCount === totalLessonsCount;
                 const percent = totalLessonsCount > 0 ? Math.round((completedCount / totalLessonsCount) * 100) : 0;
 
+                const isPendingEvaluation = !hasRated(course);
+
                 return (
                   <div 
                     key={course.id} 
-                    className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden hover:border-emerald-500/30 transition-all duration-300 flex flex-col justify-between group"
+                    className={`bg-slate-900 rounded-3xl overflow-hidden flex flex-col justify-between group transition-all duration-300 relative ${
+                      isPendingEvaluation 
+                        ? "border-2 border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.25)] ring-1 ring-amber-500/20" 
+                        : "border border-slate-800 hover:border-emerald-500/30"
+                    }`}
                   >
+                    {isPendingEvaluation && (
+                      <div className="absolute top-3 right-3 z-20 bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 text-[9px] font-mono font-black uppercase tracking-wider px-2.5 py-1 rounded-xl shadow-lg flex items-center gap-1 animate-pulse">
+                        <Star size={10} className="fill-slate-950 text-slate-950" />
+                        <span>Avaliar (+20 XP)</span>
+                      </div>
+                    )}
                     <div className="cursor-pointer flex-1" onClick={() => onNavigateToCourse(course)}>
                       <CourseCard 
                         course={course} 
@@ -509,19 +538,39 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
                               e.stopPropagation();
                               setSelectedReviewCourse(course);
                             }}
-                            className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-slate-200 text-[10px] uppercase font-mono font-bold tracking-wider rounded-lg transition-all border border-slate-800 flex items-center justify-center gap-1 cursor-pointer"
+                            className={`w-full py-2 text-[10px] uppercase font-mono font-bold tracking-wider rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer border ${
+                              isPendingEvaluation
+                                ? "bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/35"
+                                : "bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-800"
+                            }`}
                           >
                             <Star size={11} className="text-amber-400 fill-amber-400" />
-                            {hasRated(course) ? "Sua Avaliação (Editar)" : "Avaliar Curso"}
+                            {hasRated(course) ? "Sua Avaliação (Editar)" : "Avaliar Curso (+20 XP)"}
                           </button>
                         </div>
                       ) : (
-                        <button
-                          onClick={() => onNavigateToCourse(course)}
-                          className="mt-1 w-full py-2.5 bg-slate-950 hover:bg-slate-850 text-slate-300 hover:text-white text-[10px] uppercase font-mono font-bold tracking-wider rounded-lg transition-all border border-slate-800 flex items-center justify-center gap-1 cursor-pointer"
-                        >
-                          Continuar Estudos →
-                        </button>
+                        <div className="flex flex-col gap-1.5 mt-1">
+                          <button
+                            onClick={() => onNavigateToCourse(course)}
+                            className="w-full py-2.5 bg-slate-950 hover:bg-slate-850 text-slate-300 hover:text-white text-[10px] uppercase font-mono font-bold tracking-wider rounded-lg transition-all border border-slate-800 flex items-center justify-center gap-1 cursor-pointer"
+                          >
+                            Continuar Estudos →
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedReviewCourse(course);
+                            }}
+                            className={`w-full py-2 text-[10px] uppercase font-mono font-bold tracking-wider rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer border ${
+                              isPendingEvaluation
+                                ? "bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/35 animate-pulse"
+                                : "bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-800"
+                            }`}
+                          >
+                            <Star size={11} className="text-amber-400 fill-amber-400" />
+                            {hasRated(course) ? "Sua Avaliação (Editar)" : "Avaliar Curso (+20 XP)"}
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -1032,6 +1081,35 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
               </button>
             </div>
           </div>
+        </div>
+      )}
+      {/* Local Toast Alert */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-[99999] max-w-md bg-slate-900 border border-slate-800 p-4 rounded-2xl shadow-2xl flex items-center gap-3.5 transition-all duration-300">
+          <div className={`p-2 rounded-xl shrink-0 ${
+            toast.type === 'success' 
+              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+              : toast.type === 'error'
+              ? 'bg-red-500/10 text-red-400 border border-red-500/20'
+              : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+          }`}>
+            {toast.type === 'success' ? (
+              <Award size={18} className="stroke-[2.5px]" />
+            ) : (
+              <Activity size={18} />
+            )}
+          </div>
+          <div className="flex-1">
+            <p className="text-xs text-slate-200 font-semibold leading-relaxed">
+              {toast.message}
+            </p>
+          </div>
+          <button 
+            onClick={() => setToast(null)}
+            className="text-slate-400 hover:text-slate-200 p-1 rounded-lg hover:bg-slate-800/50 cursor-pointer"
+          >
+            <X size={14} />
+          </button>
         </div>
       )}
     </div>

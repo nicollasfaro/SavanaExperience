@@ -25,7 +25,7 @@ import {
   Trophy, BookOpen, Sun, Moon, Sparkles, MessageSquare, Play, CheckCircle2, 
   HelpCircle, CreditCard, ChevronRight, Download, Calendar, ShieldCheck, Clock, 
   Settings, Award, Wifi, WifiOff, Fingerprint, Lock, CheckSquare, Bell, Shield, Gift, Menu, X,
-  Video, Search
+  Video, Search, Star
 } from 'lucide-react';
 
 export function SavanaLogo({ className = "w-10 h-10" }: { className?: string }) {
@@ -529,6 +529,15 @@ export default function App() {
       };
     });
   }, [courses, modules, turmas, currentUserRole]);
+
+  const pendingEvaluationCourses = React.useMemo(() => {
+    if (!authUser) return [];
+    return computedCourses.filter(c => {
+      if (!myRegistrations.includes(c.id)) return false;
+      const hasReviewed = (c.reviews || []).some(r => r.userId === authUser.uid);
+      return !hasReviewed;
+    });
+  }, [computedCourses, myRegistrations, authUser]);
 
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
@@ -1975,6 +1984,40 @@ export default function App() {
 
       {/* CORE WRAPPER BODY CONTENT */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Eye-catching Banner for Pending Course Evaluations */}
+        {authUser && currentUserRole === 'student' && pendingEvaluationCourses.length > 0 && (
+          <div className="mb-8 p-0.5 rounded-3xl bg-gradient-to-r from-amber-500 via-orange-500 to-yellow-500 shadow-[0_0_20px_rgba(245,158,11,0.15)] animate-pulse-subtle">
+            <div className="bg-slate-900 border border-slate-850 p-5 sm:p-6 rounded-[22px] flex flex-col md:flex-row items-center justify-between gap-5 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-2xl pointer-events-none" />
+              
+              <div className="flex items-center gap-4 text-center md:text-left flex-col sm:flex-row">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0">
+                  <Star size={24} className="fill-amber-400 text-amber-400 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="font-display text-sm sm:text-base font-extrabold text-slate-100 flex items-center gap-2 justify-center sm:justify-start">
+                    Resgate seus Pontos: +20 XP por Avaliação! 🏆🎉
+                  </h3>
+                  <p className="text-[11px] sm:text-xs text-slate-400 mt-1 leading-relaxed max-w-2xl">
+                    Você tem <span className="text-amber-400 font-bold">{pendingEvaluationCourses.length}</span> {pendingEvaluationCourses.length === 1 ? 'curso matriculado' : 'cursos matriculados'} aguardando sua avaliação. Deixe seu feedback sincero para ajudar a comunidade e ganhe <span className="text-emerald-400 font-bold">+20 XP</span> em cada um para subir de nível!
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  setActiveTab('dashboard');
+                  setSelectedCourse(null);
+                  setSelectedLesson(null);
+                }}
+                className="px-5 py-3 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 text-xs font-black font-mono tracking-wider uppercase rounded-2xl transition duration-300 shadow-lg hover:scale-[1.02] cursor-pointer flex items-center gap-2 shrink-0 active:scale-95"
+              >
+                <span>Avaliar Cursos</span>
+                <span className="text-sm">→</span>
+              </button>
+            </div>
+          </div>
+        )}
         
 
 
