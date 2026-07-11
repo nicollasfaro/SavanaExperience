@@ -718,13 +718,43 @@ export default function App() {
         }
     });
 
+    // Check for pending course evaluations / edits for admins
+    if (isSystemAdmin) {
+      courses.forEach(c => {
+        const reviews = c.reviews || [];
+        reviews.forEach(r => {
+          if (r.approved === false || r.approved === undefined) {
+            newDynamicNotifications.push({
+              id: `dyn-review-pending-${c.id}-${r.userId}`,
+              userId: currentUserId,
+              title: `Avaliação Pendente: ${c.title}`,
+              message: `${r.userName || 'Estudante'} avaliou o curso com nota ${r.rating} e aguarda sua aprovação.`,
+              type: 'announcement',
+              read: false,
+              createdAt: r.createdAt || new Date().toISOString()
+            });
+          } else if (r.pendingEdit) {
+            newDynamicNotifications.push({
+              id: `dyn-review-edit-${c.id}-${r.userId}`,
+              userId: currentUserId,
+              title: `Edição de Avaliação: ${c.title}`,
+              message: `${r.userName || 'Estudante'} enviou uma nova alteração para a avaliação deste curso.`,
+              type: 'announcement',
+              read: false,
+              createdAt: r.pendingEdit.createdAt || new Date().toISOString()
+            });
+          }
+        });
+      });
+    }
+
     setNotifications(prev => {
       // filter out previous dynamic notifications to avoid duplicates or removed classes
       const persist = prev.filter(n => !n.id.startsWith('dyn-'));
       // combine and sort
       return [...newDynamicNotifications, ...persist].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     });
-  }, [courses, turmas, currentUserId, myRegistrations]);
+  }, [courses, turmas, currentUserId, myRegistrations, isSystemAdmin]);
 
   // Handle updates made in the Instructor Panel
   const updateCoursesFromLocal = () => {
