@@ -111,8 +111,13 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
       const reviews = selectedReviewCourse.reviews || [];
       const existing = reviews.find(r => r.userId === user.userId);
       if (existing) {
-        setReviewRating(existing.rating);
-        setReviewComment(existing.comment || '');
+        if (existing.pendingEdit) {
+          setReviewRating(existing.pendingEdit.rating);
+          setReviewComment(existing.pendingEdit.comment || '');
+        } else {
+          setReviewRating(existing.rating);
+          setReviewComment(existing.comment || '');
+        }
       } else {
         setReviewRating(5);
         setReviewComment('');
@@ -131,20 +136,40 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
       const reviews = selectedReviewCourse.reviews || [];
       const existingIndex = reviews.findIndex(r => r.userId === user.userId);
       
-      const newReview = {
-        userId: user.userId,
-        userName: user.name,
-        userAvatar: user.avatar,
-        rating: reviewRating,
-        comment: reviewComment,
-        createdAt: new Date().toISOString(),
-        approved: false
-      };
-      
       let updatedReviews = [...reviews];
       if (existingIndex >= 0) {
-        updatedReviews[existingIndex] = newReview;
+        const existingReview = reviews[existingIndex];
+        if (existingReview.approved === true) {
+          // If already approved, edit goes to pendingEdit so the old one remains active
+          updatedReviews[existingIndex] = {
+            ...existingReview,
+            pendingEdit: {
+              rating: reviewRating,
+              comment: reviewComment,
+              createdAt: new Date().toISOString()
+            }
+          };
+        } else {
+          // If not approved yet (pending), just overwrite it normally
+          updatedReviews[existingIndex] = {
+            ...existingReview,
+            rating: reviewRating,
+            comment: reviewComment,
+            createdAt: new Date().toISOString(),
+            approved: false
+          };
+        }
       } else {
+        // Brand new review
+        const newReview = {
+          userId: user.userId,
+          userName: user.name,
+          userAvatar: user.avatar,
+          rating: reviewRating,
+          comment: reviewComment,
+          createdAt: new Date().toISOString(),
+          approved: false
+        };
         updatedReviews.push(newReview);
       }
       
@@ -165,7 +190,12 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
         await localDB.updateLeaderboardXP(user.userId, 20);
         showLocalToast("Avaliação salva com sucesso! Você ganhou +20 XP! 🎉", "success");
       } else {
-        showLocalToast("Avaliação atualizada com sucesso!", "success");
+        const wasApproved = reviews[existingIndex]?.approved === true;
+        if (wasApproved) {
+          showLocalToast("Edição enviada para aprovação do administrador! A avaliação antiga continuará visível até lá.", "info");
+        } else {
+          showLocalToast("Avaliação atualizada com sucesso e enviada para aprovação!", "success");
+        }
       }
       
       setSelectedReviewCourse(null);

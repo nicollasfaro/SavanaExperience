@@ -11,6 +11,11 @@ export interface CourseReview {
   userName?: string;
   userAvatar?: string;
   approved?: boolean;
+  pendingEdit?: {
+    rating: number;
+    comment?: string;
+    createdAt: string;
+  };
 }
 
 export interface Course {

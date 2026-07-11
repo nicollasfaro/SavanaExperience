@@ -1041,6 +1041,16 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
       const reviews = selectedReviewsCourse.reviews || [];
       const updatedReviews = reviews.map(r => {
         if (r.userId === reviewUserId) {
+          if (r.pendingEdit) {
+            return { 
+              ...r, 
+              rating: r.pendingEdit.rating,
+              comment: r.pendingEdit.comment,
+              createdAt: r.pendingEdit.createdAt,
+              pendingEdit: undefined,
+              approved: true 
+            };
+          }
           return { ...r, approved: true };
         }
         return r;
@@ -1094,6 +1104,30 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
       showToast("Avaliação desativada!");
     } catch (err) {
       showToast("Erro ao desativar avaliação.", "error");
+    }
+  };
+
+  const handleDiscardEdit = async (reviewUserId: string) => {
+    if (!selectedReviewsCourse) return;
+    try {
+      const reviews = selectedReviewsCourse.reviews || [];
+      const updatedReviews = reviews.map(r => {
+        if (r.userId === reviewUserId) {
+          return { ...r, pendingEdit: undefined };
+        }
+        return r;
+      });
+
+      const updatedCourse: Course = {
+        ...selectedReviewsCourse,
+        reviews: updatedReviews
+      };
+
+      await localDB.saveCourse(updatedCourse);
+      setSelectedReviewsCourse(updatedCourse);
+      showToast("Edição pendente descartada!");
+    } catch (err) {
+      showToast("Erro ao descartar edição.", "error");
     }
   };
 
@@ -1821,7 +1855,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                           >
                             <Star size={14} className={(c.reviews || []).some(r => r.approved === true) ? "fill-amber-400 text-amber-400" : ""} />
                             {(() => {
-                              const pendingCount = (c.reviews || []).filter(r => r.approved === false || r.approved === undefined).length;
+                              const pendingCount = (c.reviews || []).filter(r => r.approved === false || r.approved === undefined || !!r.pendingEdit).length;
                               if (pendingCount === 0) return null;
                               return (
                                 <span className="absolute -top-2 -right-2 bg-amber-500 text-slate-950 font-mono text-[9px] font-extrabold h-4 min-w-4 px-1 rounded-full flex items-center justify-center border border-slate-900 shadow-sm animate-pulse">
@@ -3468,6 +3502,61 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                           <p className="text-xs text-slate-300 leading-relaxed bg-slate-950/40 p-2.5 rounded-lg border border-slate-900/60 font-sans italic mb-3">
                             "{review.comment}"
                           </p>
+                        )}
+
+                        {review.pendingEdit && (
+                          <div className="mt-3 p-3.5 bg-amber-500/5 border border-amber-500/25 rounded-xl relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full blur-xl pointer-events-none" />
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-[10px] font-mono uppercase font-black tracking-wider text-amber-400 flex items-center gap-1">
+                                <Sparkles size={12} className="animate-pulse text-amber-400" />
+                                Alteração Pendente de Aprovação:
+                              </span>
+                              <span className="text-[10px] text-slate-500 font-mono">
+                                {new Date(review.pendingEdit.createdAt).toLocaleDateString('pt-BR')}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 mb-2">
+                              <span className="text-[11px] text-slate-400">Nota editada:</span>
+                              <div className="flex items-center gap-0.5 bg-slate-950/60 px-1.5 py-0.5 rounded border border-slate-850/50">
+                                {[1, 2, 3, 4, 5].map((star) => (
+                                  <Star 
+                                    key={star} 
+                                    size={9} 
+                                    className={`${
+                                      star <= (review.pendingEdit?.rating || 5) 
+                                        ? "text-amber-400 fill-amber-400" 
+                                        : "text-slate-700"
+                                    }`} 
+                                  />
+                                ))}
+                                <span className="text-[9px] font-mono font-bold text-slate-300 ml-1">
+                                  {review.pendingEdit.rating}
+                                </span>
+                              </div>
+                            </div>
+                            {review.pendingEdit.comment && (
+                              <p className="text-xs text-amber-100 leading-relaxed bg-slate-950/60 p-2.5 rounded-lg border border-amber-500/10 font-sans italic">
+                                "{review.pendingEdit.comment}"
+                              </p>
+                            )}
+                            <div className="flex items-center justify-end gap-2 mt-3 pt-2 border-t border-slate-850/20">
+                              <button
+                                type="button"
+                                onClick={() => handleDiscardEdit(review.userId)}
+                                className="px-2.5 py-1 text-[9px] font-mono font-bold text-slate-400 hover:text-slate-200 bg-slate-950 hover:bg-slate-850 border border-slate-800 rounded-lg transition cursor-pointer"
+                              >
+                                Descartar Edição
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleApproveReview(review.userId)}
+                                className="px-2.5 py-1 text-[9px] font-mono font-bold text-slate-950 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 rounded-lg transition cursor-pointer shadow-md"
+                              >
+                                ✓ Aprovar Edição
+                              </button>
+                            </div>
+                          </div>
                         )}
 
                         <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-900/60">
