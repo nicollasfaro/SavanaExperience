@@ -515,7 +515,7 @@ export default function App() {
 
       // 3. Calculate Real Rating
       let realRating = course.rating;
-      const approvedReviews = (course.reviews || []).filter(rev => rev.approved === true);
+      const approvedReviews = (course.reviews || []).filter(rev => rev.approved === true && !rev.deleted);
       if (approvedReviews.length > 0) {
         const sum = approvedReviews.reduce((acc, rev) => acc + rev.rating, 0);
         realRating = sum / approvedReviews.length;
@@ -534,7 +534,7 @@ export default function App() {
     if (!authUser) return [];
     return computedCourses.filter(c => {
       if (!myRegistrations.includes(c.id)) return false;
-      const hasReviewed = (c.reviews || []).some(r => r.userId === authUser.uid);
+      const hasReviewed = (c.reviews || []).some(r => r.userId === authUser.uid && !r.deleted);
       return !hasReviewed;
     });
   }, [computedCourses, myRegistrations, authUser]);
@@ -561,11 +561,12 @@ export default function App() {
       };
 
       const reviews = courseToSave.reviews || [];
-      const existingIndex = reviews.findIndex(r => r.userId === user.userId);
+      const activeReviews = reviews.filter(r => !(r.userId === user.userId && r.deleted));
+      const existingIndex = activeReviews.findIndex(r => r.userId === user.userId);
       
-      let updatedReviews = [...reviews];
+      let updatedReviews = [...activeReviews];
       if (existingIndex >= 0) {
-        const existingReview = reviews[existingIndex];
+        const existingReview = activeReviews[existingIndex];
         if (existingReview.approved === true) {
           updatedReviews[existingIndex] = {
             ...existingReview,
@@ -597,7 +598,7 @@ export default function App() {
         updatedReviews.push(newReview);
       }
       
-      const approvedReviews = updatedReviews.filter(r => r.approved === true);
+      const approvedReviews = updatedReviews.filter(r => r.approved === true && !r.deleted);
       const averageRating = approvedReviews.length > 0
         ? parseFloat((approvedReviews.reduce((sum, r) => sum + r.rating, 0) / approvedReviews.length).toFixed(1))
         : (courseToSave.rating || 4.8);

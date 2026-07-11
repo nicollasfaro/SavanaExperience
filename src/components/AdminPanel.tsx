@@ -110,6 +110,12 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
   // 3b. Reviews management states
   const [selectedReviewsCourse, setSelectedReviewsCourse] = useState<Course | null>(null);
   const [showReviewsModal, setShowReviewsModal] = useState(false);
+  const [reviewsTab, setReviewsTab] = useState<'active' | 'deleted' | 'create_manual'>('active');
+  const [manualReviewUserId, setManualReviewUserId] = useState('');
+  const [manualReviewRating, setManualReviewRating] = useState(5);
+  const [manualReviewComment, setManualReviewComment] = useState('');
+  const [manualReviewApproved, setManualReviewApproved] = useState(true);
+  const [manualReviewStudentSearch, setManualReviewStudentSearch] = useState('');
   const [uploadPercent, setUploadPercent] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -1040,6 +1046,71 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
   const handleOpenManageReviews = (course: Course) => {
     setSelectedReviewsCourse(course);
     setShowReviewsModal(true);
+    setReviewsTab('active');
+    setManualReviewUserId('');
+    setManualReviewRating(5);
+    setManualReviewComment('');
+    setManualReviewApproved(true);
+    setManualReviewStudentSearch('');
+  };
+
+  const handleCreateManualReview = async () => {
+    if (!selectedReviewsCourse) return;
+    if (!manualReviewUserId) {
+      showToast("Selecione um aluno da lista para criar a avaliação.", "error");
+      return;
+    }
+
+    const selectedUser = allUsers.find(u => u.userId === manualReviewUserId);
+    if (!selectedUser) {
+      showToast("Aluno selecionado não encontrado.", "error");
+      return;
+    }
+
+    try {
+      const reviews = selectedReviewsCourse.reviews || [];
+      // Remove any existing review for this user (including deleted ones) to avoid duplicates
+      const filteredReviews = reviews.filter(r => r.userId !== manualReviewUserId);
+
+      const newReview: any = {
+        userId: manualReviewUserId,
+        userName: selectedUser.name,
+        userAvatar: selectedUser.avatar || "",
+        rating: manualReviewRating,
+        comment: manualReviewComment,
+        createdAt: new Date().toISOString(),
+        approved: manualReviewApproved,
+        deleted: false
+      };
+
+      const updatedReviews = [...filteredReviews, newReview];
+
+      const approvedReviews = updatedReviews.filter(r => r.approved === true && !r.deleted);
+      const averageRating = approvedReviews.length > 0
+        ? parseFloat((approvedReviews.reduce((sum, r) => sum + r.rating, 0) / approvedReviews.length).toFixed(1))
+        : (selectedReviewsCourse.rating || 4.8);
+
+      const updatedCourse: Course = {
+        ...selectedReviewsCourse,
+        reviews: updatedReviews,
+        rating: averageRating
+      };
+
+      await localDB.saveCourse(updatedCourse);
+      setSelectedReviewsCourse(updatedCourse);
+      showToast("Avaliação manual registrada com sucesso!");
+
+      // Reset manual review form & go to active reviews tab
+      setManualReviewUserId('');
+      setManualReviewRating(5);
+      setManualReviewComment('');
+      setManualReviewApproved(true);
+      setManualReviewStudentSearch('');
+      setReviewsTab('active');
+    } catch (err) {
+      console.error("Error creating manual review:", err);
+      showToast("Erro ao registrar avaliação manual.", "error");
+    }
   };
 
   const handleApproveReview = async (reviewUserId: string) => {
@@ -1063,8 +1134,8 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
         return r;
       });
 
-      // Recalculate average rating of only approved reviews
-      const approvedReviews = updatedReviews.filter(r => r.approved === true);
+      // Recalculate average rating of only approved reviews that are not deleted
+      const approvedReviews = updatedReviews.filter(r => r.approved === true && !r.deleted);
       const averageRating = approvedReviews.length > 0 
         ? parseFloat((approvedReviews.reduce((sum, r) => sum + r.rating, 0) / approvedReviews.length).toFixed(1))
         : 4.8;
@@ -1094,8 +1165,8 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
         return r;
       });
 
-      // Recalculate average rating of only approved reviews
-      const approvedReviews = updatedReviews.filter(r => r.approved === true);
+      // Recalculate average rating of only approved reviews that are not deleted
+      const approvedReviews = updatedReviews.filter(r => r.approved === true && !r.deleted);
       const averageRating = approvedReviews.length > 0 
         ? parseFloat((approvedReviews.reduce((sum, r) => sum + r.rating, 0) / approvedReviews.length).toFixed(1))
         : 4.8;
@@ -1142,16 +1213,86 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
     if (!selectedReviewsCourse) return;
     setConfirmConfig({
       title: "Excluir Avaliação",
-      description: "Tem certeza de que deseja remover esta avaliação definitivamente do sistema?",
+      description: "Deseja mover esta avaliação para a lixeira/excluídas? Você poderá recuperá-la mais tarde se necessário.",
       confirmText: "Sim, Excluir",
+      onConfirm: async () => {
+        setConfirmConfig(null);
+        try {
+          const reviews = selectedReviewsCourse.reviews || [];
+          const updatedReviews = reviews.map(r => {
+            if (r.userId === reviewUserId) {
+              return { ...r, deleted: true, deletedAt: new Date().toISOString() };
+            }
+            return r;
+          });
+
+          // Recalculate average rating of only approved reviews that are not deleted
+          const approvedReviews = updatedReviews.filter(r => r.approved === true && !r.deleted);
+          const averageRating = approvedReviews.length > 0 
+            ? parseFloat((approvedReviews.reduce((sum, r) => sum + r.rating, 0) / approvedReviews.length).toFixed(1))
+            : 4.8;
+
+          const updatedCourse: Course = {
+            ...selectedReviewsCourse,
+            reviews: updatedReviews,
+            rating: averageRating
+          };
+
+          await localDB.saveCourse(updatedCourse);
+          setSelectedReviewsCourse(updatedCourse);
+          showToast("Avaliação movida para a aba de excluídas com sucesso!");
+        } catch (err) {
+          showToast("Erro ao excluir avaliação.", "error");
+        }
+      }
+    });
+  };
+
+  const handleRestoreReview = async (reviewUserId: string) => {
+    if (!selectedReviewsCourse) return;
+    try {
+      const reviews = selectedReviewsCourse.reviews || [];
+      const updatedReviews = reviews.map(r => {
+        if (r.userId === reviewUserId) {
+          return { ...r, deleted: false, deletedAt: undefined };
+        }
+        return r;
+      });
+
+      // Recalculate average rating of only approved reviews that are not deleted
+      const approvedReviews = updatedReviews.filter(r => r.approved === true && !r.deleted);
+      const averageRating = approvedReviews.length > 0 
+        ? parseFloat((approvedReviews.reduce((sum, r) => sum + r.rating, 0) / approvedReviews.length).toFixed(1))
+        : 4.8;
+
+      const updatedCourse: Course = {
+        ...selectedReviewsCourse,
+        reviews: updatedReviews,
+        rating: averageRating
+      };
+
+      await localDB.saveCourse(updatedCourse);
+      setSelectedReviewsCourse(updatedCourse);
+      showToast("Avaliação restaurada com sucesso!");
+    } catch (err) {
+      showToast("Erro ao restaurar avaliação.", "error");
+    }
+  };
+
+  const handlePermanentDeleteReview = async (reviewUserId: string) => {
+    if (!selectedReviewsCourse) return;
+    setConfirmConfig({
+      title: "Excluir Permanentemente",
+      description: "Tem certeza de que deseja remover esta avaliação definitivamente? Esta ação não pode ser desfeita.",
+      confirmText: "Sim, Excluir de vez",
       onConfirm: async () => {
         setConfirmConfig(null);
         try {
           const reviews = selectedReviewsCourse.reviews || [];
           const updatedReviews = reviews.filter(r => r.userId !== reviewUserId);
 
-          // Recalculate average rating of only approved reviews
-          const approvedReviews = updatedReviews.filter(r => r.approved === true);
+          // Recalculate average rating of only approved reviews that are not deleted
+          const approvedReviews = updatedReviews.filter(r => r.approved === true && !r.deleted);
           const averageRating = approvedReviews.length > 0 
             ? parseFloat((approvedReviews.reduce((sum, r) => sum + r.rating, 0) / approvedReviews.length).toFixed(1))
             : 4.8;
@@ -1166,7 +1307,7 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
           setSelectedReviewsCourse(updatedCourse);
           showToast("Avaliação excluída permanentemente!");
         } catch (err) {
-          showToast("Erro ao excluir avaliação.", "error");
+          showToast("Erro ao excluir permanentemente.", "error");
         }
       }
     });
@@ -3741,165 +3882,423 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
               {selectedReviewsCourse.title}
             </p>
 
+            {/* Abas do modal de avaliações */}
+            <div className="flex flex-wrap items-center gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-850 w-fit mb-5">
+              <button
+                type="button"
+                onClick={() => setReviewsTab('active')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg transition cursor-pointer ${
+                  reviewsTab === 'active'
+                    ? 'bg-blue-500 text-slate-950 font-bold shadow-md'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span>Ativas / Pendentes</span>
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${
+                  reviewsTab === 'active' 
+                    ? 'bg-blue-650 text-slate-950 border-blue-700/30' 
+                    : 'bg-slate-900 text-slate-400 border-slate-800'
+                }`}>
+                  {(selectedReviewsCourse.reviews || []).filter(r => !r.deleted).length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setReviewsTab('deleted')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg transition cursor-pointer ${
+                  reviewsTab === 'deleted'
+                    ? 'bg-blue-500 text-slate-950 font-bold shadow-md'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span>Excluídas (Lixeira)</span>
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${
+                  reviewsTab === 'deleted' 
+                    ? 'bg-blue-650 text-slate-950 border-blue-700/30' 
+                    : 'bg-slate-900 text-slate-400 border-slate-800'
+                }`}>
+                  {(selectedReviewsCourse.reviews || []).filter(r => r.deleted).length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setReviewsTab('create_manual')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg transition cursor-pointer ${
+                  reviewsTab === 'create_manual'
+                    ? 'bg-emerald-400 text-slate-950 font-bold shadow-md'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span>Criar Manualmente</span>
+                <Plus size={12} />
+              </button>
+            </div>
+
             <div className="space-y-4">
-              {(selectedReviewsCourse.reviews || []).length === 0 ? (
-                <div className="text-center py-10 bg-slate-950/40 border border-slate-850 rounded-xl">
-                  <Star className="mx-auto text-slate-600 mb-2 fill-slate-900" size={24} />
-                  <p className="text-xs text-slate-500">Nenhum aluno avaliou este curso ainda.</p>
-                </div>
-              ) : (
-                <div className="space-y-3 max-h-[450px] overflow-y-auto pr-2 custom-scrollbar font-sans">
-                  {(selectedReviewsCourse.reviews || []).map((review, rIdx) => {
-                    const isApproved = review.approved === true;
-                    return (
-                      <div 
-                        key={review.userId || rIdx} 
-                        className={`p-4 rounded-xl border transition-all ${
-                          isApproved 
-                            ? 'bg-slate-950/20 border-slate-850/50' 
-                            : 'bg-amber-500/5 border-amber-500/20 shadow-inner'
-                        }`}
-                      >
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
-                          <div className="flex items-center gap-2.5">
-                            <img 
-                              src={review.userAvatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'} 
-                              alt={review.userName || 'Estudante'} 
-                              className="w-8 h-8 rounded-full border border-slate-800 object-cover shrink-0"
-                              referrerPolicy="no-referrer"
-                            />
-                            <div>
-                              <span className="block text-xs font-semibold text-slate-200">
-                                {review.userName || 'Estudante'}
-                              </span>
-                              <span className="text-[10px] text-slate-500 font-mono">
-                                {review.createdAt ? new Date(review.createdAt).toLocaleDateString('pt-BR') : 'Data não informada'}
-                              </span>
-                            </div>
-                          </div>
+              {(() => {
+                if (reviewsTab === 'create_manual') {
+                  const selectedUser = allUsers.find(u => u.userId === manualReviewUserId);
+                  const searchCandidates = allUsers.filter(u => {
+                    const term = manualReviewStudentSearch.toLowerCase();
+                    return u.name.toLowerCase().includes(term) || (u.email && u.email.toLowerCase().includes(term));
+                  });
+                  const limitedCandidates = searchCandidates.slice(0, 5);
 
-                          <div className="flex items-center gap-2">
-                            <div className="flex items-center gap-0.5 bg-slate-950/60 px-2 py-1 rounded border border-slate-850/50">
-                              {[1, 2, 3, 4, 5].map((star) => (
-                                <Star 
-                                  key={star} 
-                                  size={10} 
-                                  className={`${
-                                    star <= (review.rating || 5) 
-                                      ? "text-amber-400 fill-amber-400" 
-                                      : "text-slate-700"
-                                  }`} 
-                                />
-                              ))}
-                              <span className="text-[10px] font-mono font-bold text-slate-300 ml-1">
-                                {review.rating}
-                              </span>
+                  return (
+                    <div className="space-y-4 bg-slate-950/30 p-5 rounded-2xl border border-slate-800/85">
+                      {/* Aluno Selection */}
+                      <div className="space-y-2">
+                        <label className="block text-xs font-mono font-bold uppercase tracking-wider text-slate-400">
+                          Selecionar Aluno
+                        </label>
+
+                        {selectedUser ? (
+                          <div className="flex items-center justify-between p-3 bg-slate-950 border border-emerald-500/30 rounded-xl">
+                            <div className="flex items-center gap-3">
+                              <img 
+                                src={selectedUser.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'} 
+                                alt={selectedUser.name} 
+                                className="w-9 h-9 rounded-full border border-slate-800 object-cover shrink-0"
+                                referrerPolicy="no-referrer"
+                              />
+                              <div>
+                                <p className="text-xs font-bold text-slate-100">{selectedUser.name}</p>
+                                <p className="text-[10px] text-slate-400 font-mono">{selectedUser.email || 'Sem e-mail'}</p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setManualReviewUserId('')}
+                              className="text-xs text-red-400 hover:text-red-350 bg-red-500/10 hover:bg-red-500/20 px-3 py-1.5 rounded-lg transition cursor-pointer font-mono font-bold"
+                            >
+                              Alterar
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <div className="relative">
+                              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
+                              <input
+                                type="text"
+                                value={manualReviewStudentSearch}
+                                onChange={(e) => setManualReviewStudentSearch(e.target.value)}
+                                placeholder="Buscar aluno por nome ou e-mail..."
+                                className="w-full pl-9 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                              />
                             </div>
 
-                            {isApproved ? (
-                              <span className="text-[9px] uppercase font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-bold">
-                                Aprovado / Ativo
-                              </span>
-                            ) : (
-                              <span className="text-[9px] uppercase font-mono bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded font-bold">
-                                Pendente
-                              </span>
-                            )}
+                            {/* Candidate List */}
+                            <div className="bg-slate-950/60 border border-slate-850/60 rounded-xl divide-y divide-slate-850 overflow-hidden max-h-[180px] overflow-y-auto">
+                              {limitedCandidates.length > 0 ? (
+                                limitedCandidates.map(candidate => (
+                                  <button
+                                    key={candidate.userId}
+                                    type="button"
+                                    onClick={() => setManualReviewUserId(candidate.userId)}
+                                    className="flex items-center justify-between w-full p-2.5 hover:bg-slate-800/50 transition text-left cursor-pointer"
+                                  >
+                                    <div className="flex items-center gap-2.5">
+                                      <img 
+                                        src={candidate.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'} 
+                                        alt={candidate.name} 
+                                        className="w-7 h-7 rounded-full object-cover border border-slate-800 shrink-0"
+                                        referrerPolicy="no-referrer"
+                                      />
+                                      <div>
+                                        <p className="text-xs font-bold text-slate-250 leading-tight">{candidate.name}</p>
+                                        <p className="text-[10px] text-slate-450 font-mono leading-none">{candidate.email || 'Sem e-mail'}</p>
+                                      </div>
+                                    </div>
+                                    <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-400/10 border border-emerald-500/10 px-2 py-0.5 rounded">
+                                      Selecionar
+                                    </span>
+                                  </button>
+                                ))
+                              ) : (
+                                <p className="text-[11px] text-slate-500 text-center py-4">Nenhum aluno encontrado.</p>
+                              )}
+                            </div>
                           </div>
-                        </div>
-
-                        {review.comment && (
-                          <p className="text-xs text-slate-300 leading-relaxed bg-slate-950/40 p-2.5 rounded-lg border border-slate-900/60 font-sans italic mb-3">
-                            "{review.comment}"
-                          </p>
                         )}
+                      </div>
 
-                        {review.pendingEdit && (
-                          <div className="mt-3 p-3.5 bg-amber-500/5 border border-amber-500/25 rounded-xl relative overflow-hidden">
-                            <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full blur-xl pointer-events-none" />
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-[10px] font-mono uppercase font-black tracking-wider text-amber-400 flex items-center gap-1">
-                                <Sparkles size={12} className="animate-pulse text-amber-400" />
-                                Alteração Pendente de Aprovação:
-                              </span>
-                              <span className="text-[10px] text-slate-500 font-mono">
-                                {new Date(review.pendingEdit.createdAt).toLocaleDateString('pt-BR')}
-                              </span>
+                      {/* Nota Selection */}
+                      <div className="space-y-2">
+                        <label className="block text-xs font-mono font-bold uppercase tracking-wider text-slate-400">
+                          Nota da Avaliação
+                        </label>
+                        <div className="flex items-center gap-2 bg-slate-950 p-3.5 rounded-xl border border-slate-850/60 w-fit">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <button
+                              key={star}
+                              type="button"
+                              onClick={() => setManualReviewRating(star)}
+                              className="p-1 hover:scale-115 transition cursor-pointer"
+                            >
+                              <Star 
+                                size={24} 
+                                className={`${
+                                  star <= manualReviewRating 
+                                    ? "text-amber-400 fill-amber-400" 
+                                    : "text-slate-700"
+                                } transition-all`} 
+                              />
+                            </button>
+                          ))}
+                          <span className="ml-3 text-xs font-mono font-bold text-amber-400">
+                            {manualReviewRating} {manualReviewRating === 1 ? 'Estrela' : 'Estrelas'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Comentário Textarea */}
+                      <div className="space-y-2">
+                        <label className="block text-xs font-mono font-bold uppercase tracking-wider text-slate-400">
+                          Comentário / Opinião
+                        </label>
+                        <textarea
+                          value={manualReviewComment}
+                          onChange={(e) => setManualReviewComment(e.target.value)}
+                          placeholder="Digite o comentário que o aluno fez, ou deixe em branco se não houver texto..."
+                          rows={3}
+                          maxLength={500}
+                          className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 text-xs leading-relaxed transition-all focus:ring-1 focus:ring-emerald-500/20 resize-none"
+                        />
+                        <div className="text-right text-[10px] text-slate-500 font-mono">
+                          {manualReviewComment.length}/500 caracteres
+                        </div>
+                      </div>
+
+                      {/* Checkbox Aprovação Imediata */}
+                      <div className="flex items-center gap-2.5 py-1">
+                        <input
+                          type="checkbox"
+                          id="manual-review-approved-chk"
+                          checked={manualReviewApproved}
+                          onChange={(e) => setManualReviewApproved(e.target.checked)}
+                          className="w-4 h-4 rounded border-slate-800 bg-slate-950 text-emerald-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                        />
+                        <label htmlFor="manual-review-approved-chk" className="text-xs font-medium text-slate-300 cursor-pointer select-none">
+                          Aprovar e publicar imediatamente (visível para todos os alunos)
+                        </label>
+                      </div>
+
+                      {/* Submit Button */}
+                      <div className="pt-2">
+                        <button
+                          type="button"
+                          onClick={handleCreateManualReview}
+                          className="w-full py-3 px-4 rounded-xl text-xs font-mono font-bold uppercase tracking-wider bg-emerald-400 text-slate-950 hover:bg-emerald-300 transition cursor-pointer font-black flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/10"
+                        >
+                          Salvar Avaliação Manual
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                const filteredModalReviews = (selectedReviewsCourse.reviews || []).filter(review => {
+                  if (reviewsTab === 'deleted') {
+                    return review.deleted === true;
+                  } else {
+                    return !review.deleted;
+                  }
+                });
+
+                if (filteredModalReviews.length === 0) {
+                  return (
+                    <div className="text-center py-10 bg-slate-950/40 border border-slate-850 rounded-xl">
+                      <Star className="mx-auto text-slate-600 mb-2 fill-slate-900" size={24} />
+                      <p className="text-xs text-slate-500">
+                        {reviewsTab === 'deleted' 
+                          ? 'Nenhuma avaliação na lixeira.' 
+                          : 'Nenhum aluno avaliou este curso ainda.'}
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-3 max-h-[450px] overflow-y-auto pr-2 custom-scrollbar font-sans">
+                    {filteredModalReviews.map((review, rIdx) => {
+                      const isApproved = review.approved === true;
+                      return (
+                        <div 
+                          key={review.userId || rIdx} 
+                          className={`p-4 rounded-xl border transition-all ${
+                            review.deleted
+                              ? 'bg-red-500/5 border-red-500/20'
+                              : isApproved 
+                                ? 'bg-slate-950/20 border-slate-850/50' 
+                                : 'bg-amber-500/5 border-amber-500/20 shadow-inner'
+                          }`}
+                        >
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
+                            <div className="flex items-center gap-2.5">
+                              <img 
+                                src={review.userAvatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'} 
+                                alt={review.userName || 'Estudante'} 
+                                className="w-8 h-8 rounded-full border border-slate-800 object-cover shrink-0"
+                                referrerPolicy="no-referrer"
+                              />
+                              <div>
+                                <span className="block text-xs font-semibold text-slate-200">
+                                  {review.userName || 'Estudante'}
+                                </span>
+                                <span className="text-[10px] text-slate-500 font-mono">
+                                  {review.createdAt ? new Date(review.createdAt).toLocaleDateString('pt-BR') : 'Data não informada'}
+                                </span>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1.5 mb-2">
-                              <span className="text-[11px] text-slate-400">Nota editada:</span>
-                              <div className="flex items-center gap-0.5 bg-slate-950/60 px-1.5 py-0.5 rounded border border-slate-850/50">
+
+                            <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-0.5 bg-slate-950/60 px-2 py-1 rounded border border-slate-850/50">
                                 {[1, 2, 3, 4, 5].map((star) => (
                                   <Star 
                                     key={star} 
-                                    size={9} 
+                                    size={10} 
                                     className={`${
-                                      star <= (review.pendingEdit?.rating || 5) 
+                                      star <= (review.rating || 5) 
                                         ? "text-amber-400 fill-amber-400" 
                                         : "text-slate-700"
                                     }`} 
                                   />
                                 ))}
-                                <span className="text-[9px] font-mono font-bold text-slate-300 ml-1">
-                                  {review.pendingEdit.rating}
+                                <span className="text-[10px] font-mono font-bold text-slate-300 ml-1">
+                                  {review.rating}
                                 </span>
                               </div>
-                            </div>
-                            {review.pendingEdit.comment && (
-                              <p className="text-xs text-amber-100 leading-relaxed bg-slate-950/60 p-2.5 rounded-lg border border-amber-500/10 font-sans italic">
-                                "{review.pendingEdit.comment}"
-                              </p>
-                            )}
-                            <div className="flex items-center justify-end gap-2 mt-3 pt-2 border-t border-slate-850/20">
-                              <button
-                                type="button"
-                                onClick={() => handleDiscardEdit(review.userId)}
-                                className="px-2.5 py-1 text-[9px] font-mono font-bold text-slate-400 hover:text-slate-200 bg-slate-950 hover:bg-slate-850 border border-slate-800 rounded-lg transition cursor-pointer"
-                              >
-                                Descartar Edição
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleApproveReview(review.userId)}
-                                className="px-2.5 py-1 text-[9px] font-mono font-bold text-slate-950 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 rounded-lg transition cursor-pointer shadow-md"
-                              >
-                                ✓ Aprovar Edição
-                              </button>
+
+                              {review.deleted ? (
+                                <span className="text-[9px] uppercase font-mono bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded font-bold">
+                                  Excluída
+                                </span>
+                              ) : isApproved ? (
+                                <span className="text-[9px] uppercase font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-bold">
+                                  Aprovado / Ativo
+                                </span>
+                              ) : (
+                                <span className="text-[9px] uppercase font-mono bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded font-bold">
+                                  Pendente
+                                </span>
+                              )}
                             </div>
                           </div>
-                        )}
 
-                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-900/60">
-                          {isApproved ? (
-                            <button
-                              type="button"
-                              onClick={() => handleDisapproveReview(review.userId)}
-                              className="px-2.5 py-1 text-[10px] font-mono font-semibold text-amber-400 hover:text-amber-300 bg-amber-500/5 hover:bg-amber-500/10 border border-amber-500/10 hover:border-amber-500/25 rounded-lg transition cursor-pointer"
-                            >
-                              Ocultar do Card
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleApproveReview(review.userId)}
-                              className="px-2.5 py-1 text-[10px] font-mono font-semibold text-emerald-400 hover:text-emerald-350 bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/20 hover:border-emerald-500/35 rounded-lg transition cursor-pointer"
-                            >
-                              ✓ Aprovar & Publicar
-                            </button>
+                          {review.comment && (
+                            <p className="text-xs text-slate-300 leading-relaxed bg-slate-950/40 p-2.5 rounded-lg border border-slate-900/60 font-sans italic mb-3">
+                              "{review.comment}"
+                            </p>
                           )}
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteReview(review.userId)}
-                            className="px-2.5 py-1 text-[10px] font-mono font-semibold text-red-400 hover:text-red-350 bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 hover:border-red-500/25 rounded-lg transition cursor-pointer"
-                          >
-                            Excluir Avaliação
-                          </button>
+
+                          {review.pendingEdit && !review.deleted && (
+                            <div className="mt-3 p-3.5 bg-amber-500/5 border border-amber-500/25 rounded-xl relative overflow-hidden">
+                              <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full blur-xl pointer-events-none" />
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-[10px] font-mono uppercase font-black tracking-wider text-amber-400 flex items-center gap-1">
+                                  <Sparkles size={12} className="animate-pulse text-amber-400" />
+                                  Alteração Pendente de Aprovação:
+                                </span>
+                                <span className="text-[10px] text-slate-500 font-mono">
+                                  {new Date(review.pendingEdit.createdAt).toLocaleDateString('pt-BR')}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5 mb-2">
+                                <span className="text-[11px] text-slate-400">Nota editada:</span>
+                                <div className="flex items-center gap-0.5 bg-slate-950/60 px-1.5 py-0.5 rounded border border-slate-850/50">
+                                  {[1, 2, 3, 4, 5].map((star) => (
+                                    <Star 
+                                      key={star} 
+                                      size={9} 
+                                      className={`${
+                                        star <= (review.pendingEdit?.rating || 5) 
+                                          ? "text-amber-400 fill-amber-400" 
+                                          : "text-slate-700"
+                                      }`} 
+                                    />
+                                  ))}
+                                  <span className="text-[9px] font-mono font-bold text-slate-300 ml-1">
+                                    {review.pendingEdit.rating}
+                                  </span>
+                                </div>
+                              </div>
+                              {review.pendingEdit.comment && (
+                                <p className="text-xs text-amber-100 leading-relaxed bg-slate-950/60 p-2.5 rounded-lg border border-amber-500/10 font-sans italic">
+                                  "{review.pendingEdit.comment}"
+                                </p>
+                              )}
+                              <div className="flex items-center justify-end gap-2 mt-3 pt-2 border-t border-slate-850/20">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDiscardEdit(review.userId)}
+                                  className="px-2.5 py-1 text-[9px] font-mono font-bold text-slate-400 hover:text-slate-200 bg-slate-950 hover:bg-slate-850 border border-slate-800 rounded-lg transition cursor-pointer"
+                                >
+                                  Descartar Edição
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleApproveReview(review.userId)}
+                                  className="px-2.5 py-1 text-[9px] font-mono font-bold text-slate-950 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 rounded-lg transition cursor-pointer shadow-md"
+                                >
+                                  ✓ Aprovar Edição
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-900/60">
+                            {review.deleted ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRestoreReview(review.userId)}
+                                  className="px-2.5 py-1 text-[10px] font-mono font-semibold text-emerald-400 hover:text-emerald-350 bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/20 hover:border-emerald-500/35 rounded-lg transition cursor-pointer"
+                                >
+                                  ✓ Recuperar / Restaurar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handlePermanentDeleteReview(review.userId)}
+                                  className="px-2.5 py-1 text-[10px] font-mono font-semibold text-red-400 hover:text-red-350 bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 hover:border-red-500/25 rounded-lg transition cursor-pointer"
+                                >
+                                  Excluir Permanentemente
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                {isApproved ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDisapproveReview(review.userId)}
+                                    className="px-2.5 py-1 text-[10px] font-mono font-semibold text-amber-400 hover:text-amber-300 bg-amber-500/5 hover:bg-amber-500/10 border border-amber-500/10 hover:border-amber-500/25 rounded-lg transition cursor-pointer"
+                                  >
+                                    Ocultar do Card
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApproveReview(review.userId)}
+                                    className="px-2.5 py-1 text-[10px] font-mono font-semibold text-emerald-400 hover:text-emerald-350 bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/20 hover:border-emerald-500/35 rounded-lg transition cursor-pointer"
+                                  >
+                                    ✓ Aprovar & Publicar
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteReview(review.userId)}
+                                  className="px-2.5 py-1 text-[10px] font-mono font-semibold text-red-400 hover:text-red-350 bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 hover:border-red-500/25 rounded-lg transition cursor-pointer"
+                                >
+                                  Excluir Avaliação
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="mt-6 flex justify-end">

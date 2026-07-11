@@ -11,6 +11,8 @@ export interface CourseReview {
   userName?: string;
   userAvatar?: string;
   approved?: boolean;
+  deleted?: boolean;
+  deletedAt?: string;
   pendingEdit?: {
     rating: number;
     comment?: string;

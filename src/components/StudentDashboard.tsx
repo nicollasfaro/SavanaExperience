@@ -98,6 +98,7 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
   const [savingReview, setSavingReview] = useState(false);
+  const [confirmDeleteMyReview, setConfirmDeleteMyReview] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
   const showLocalToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
@@ -159,8 +160,9 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
   // Synchronize previously saved rating and comment
   useEffect(() => {
     if (selectedReviewCourse) {
+      setConfirmDeleteMyReview(false);
       const reviews = selectedReviewCourse.reviews || [];
-      const existing = reviews.find(r => r.userId === user.userId);
+      const existing = reviews.find(r => r.userId === user.userId && !r.deleted);
       if (existing) {
         if (existing.pendingEdit) {
           setReviewRating(existing.pendingEdit.rating);
@@ -177,19 +179,34 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
   }, [selectedReviewCourse, user.userId]);
 
   const hasRated = (course: Course) => {
-    return (course.reviews || []).some(r => r.userId === user.userId);
+    return (course.reviews || []).some(r => r.userId === user.userId && !r.deleted);
   };
 
   const handleSaveReview = async () => {
     if (!selectedReviewCourse) return;
+    
+    // Check if evaluation was created more than 24h ago
+    const reviews = selectedReviewCourse.reviews || [];
+    const existingReview = reviews.find(r => r.userId === user.userId && !r.deleted);
+    const isPast24Hours = existingReview && existingReview.createdAt 
+      ? (Date.now() - new Date(existingReview.createdAt).getTime()) > 24 * 60 * 60 * 1000 
+      : false;
+
+    if (isPast24Hours) {
+      showLocalToast("Esta avaliação foi criada há mais de 24 horas e não pode ser editada.", "error");
+      setSelectedReviewCourse(null);
+      return;
+    }
+
     setSavingReview(true);
     try {
-      const reviews = selectedReviewCourse.reviews || [];
-      const existingIndex = reviews.findIndex(r => r.userId === user.userId);
+      // Clean up any previously deleted reviews for this user to avoid duplicates
+      const activeReviews = reviews.filter(r => !(r.userId === user.userId && r.deleted));
+      const existingIndex = activeReviews.findIndex(r => r.userId === user.userId);
       
-      let updatedReviews = [...reviews];
+      let updatedReviews = [...activeReviews];
       if (existingIndex >= 0) {
-        const existingReview = reviews[existingIndex];
+        const existingReview = activeReviews[existingIndex];
         if (existingReview.approved === true) {
           // If already approved, edit goes to pendingEdit so the old one remains active
           updatedReviews[existingIndex] = {
@@ -224,7 +241,7 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
         updatedReviews.push(newReview);
       }
       
-      const approvedReviews = updatedReviews.filter(r => r.approved === true);
+      const approvedReviews = updatedReviews.filter(r => r.approved === true && !r.deleted);
       const averageRating = approvedReviews.length > 0
         ? parseFloat((approvedReviews.reduce((sum, r) => sum + r.rating, 0) / approvedReviews.length).toFixed(1))
         : (selectedReviewCourse.rating || 4.8);
@@ -255,6 +272,53 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
       showLocalToast("Erro ao salvar avaliação.", "error");
     } finally {
       setSavingReview(false);
+    }
+  };
+
+  const handleDeleteMyReview = async () => {
+    if (!selectedReviewCourse) return;
+
+    const reviews = selectedReviewCourse.reviews || [];
+    const existingReview = reviews.find(r => r.userId === user.userId && !r.deleted);
+    const isPast24Hours = existingReview && existingReview.createdAt 
+      ? (Date.now() - new Date(existingReview.createdAt).getTime()) > 24 * 60 * 60 * 1000 
+      : false;
+
+    if (isPast24Hours) {
+      showLocalToast("Esta avaliação foi criada há mais de 24 horas e não pode ser excluída.", "error");
+      setSelectedReviewCourse(null);
+      return;
+    }
+
+    setSavingReview(true);
+    try {
+      const updatedReviews = reviews.map(r => {
+        if (r.userId === user.userId && !r.deleted) {
+          return { ...r, deleted: true, deletedAt: new Date().toISOString() };
+        }
+        return r;
+      });
+
+      const approvedReviews = updatedReviews.filter(r => r.approved === true && !r.deleted);
+      const averageRating = approvedReviews.length > 0
+        ? parseFloat((approvedReviews.reduce((sum, r) => sum + r.rating, 0) / approvedReviews.length).toFixed(1))
+        : (selectedReviewCourse.rating || 4.8);
+
+      const updatedCourse: Course = {
+        ...selectedReviewCourse,
+        reviews: updatedReviews,
+        rating: averageRating
+      };
+
+      await localDB.saveCourse(updatedCourse);
+      showLocalToast("Avaliação removida com sucesso e enviada para a lixeira!", "success");
+      setSelectedReviewCourse(null);
+    } catch (err) {
+      console.error("Error deleting course review:", err);
+      showLocalToast("Erro ao excluir avaliação.", "error");
+    } finally {
+      setSavingReview(false);
+      setConfirmDeleteMyReview(false);
     }
   };
 
@@ -1226,116 +1290,206 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
       )}
 
       {/* Course Evaluation Modal */}
-      {selectedReviewCourse && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999] animate-fadeIn">
-          <div 
-            className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-scaleUp p-6 space-y-5"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-display text-lg font-bold text-slate-100">
-                  Avaliar Curso
-                </h3>
-                <p className="text-xs text-slate-400 mt-1 line-clamp-1">
-                  {selectedReviewCourse.title}
-                </p>
-              </div>
-              <button 
-                onClick={() => setSelectedReviewCourse(null)}
-                className="p-2 rounded-xl text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition cursor-pointer"
-                id="btn-close-review-form-modal"
-              >
-                <X size={18} />
-              </button>
-            </div>
+      {selectedReviewCourse && (() => {
+        const reviews = selectedReviewCourse.reviews || [];
+        const existingReview = reviews.find(r => r.userId === user.userId && !r.deleted);
+        const isPast24Hours = existingReview && existingReview.createdAt 
+          ? (Date.now() - new Date(existingReview.createdAt).getTime()) > 24 * 60 * 60 * 1000 
+          : false;
+        
+        const timeRemainingText = existingReview && existingReview.createdAt && !isPast24Hours
+          ? (() => {
+              const createdTime = new Date(existingReview.createdAt).getTime();
+              const elapsed = Date.now() - createdTime;
+              const remainingMs = (24 * 60 * 60 * 1000) - elapsed;
+              if (remainingMs <= 0) return "";
+              const hours = Math.floor(remainingMs / (1000 * 60 * 60));
+              const minutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+              if (hours > 0) return `Restam ${hours}h ${minutes}m para editar ou excluir esta avaliação.`;
+              return `Restam ${minutes}m para editar ou excluir esta avaliação.`;
+            })()
+          : "";
 
-            <div className="space-y-4">
-              {/* Star Selection Block */}
-              <div className="text-center bg-slate-950/40 p-4 rounded-2xl border border-slate-850/60 space-y-2">
-                <span className="block text-xs font-mono font-bold uppercase tracking-wider text-slate-400">
-                  Sua Nota
-                </span>
-                <div className="flex items-center justify-center gap-2">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      type="button"
-                      onClick={() => setReviewRating(star)}
-                      className="p-1 hover:scale-110 transition cursor-pointer"
-                      id={`btn-star-rate-${star}`}
-                    >
-                      <Star 
-                        size={32} 
-                        className={`${
-                          star <= reviewRating 
-                            ? "text-amber-400 fill-amber-400" 
-                            : "text-slate-700"
-                        } transition-all`} 
-                      />
-                    </button>
-                  ))}
+        return (
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999] animate-fadeIn">
+            <div 
+              className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-scaleUp p-6 space-y-5"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-display text-lg font-bold text-slate-100">
+                    {isPast24Hours ? "Visualizar Avaliação" : "Avaliar Curso"}
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1 line-clamp-1">
+                    {selectedReviewCourse.title}
+                  </p>
                 </div>
-                <span className="text-[11px] font-mono font-semibold text-amber-400">
-                  {reviewRating === 5 && "Incrível! Excelente curso 🌟"}
-                  {reviewRating === 4 && "Muito bom! Vale a pena 👍"}
-                  {reviewRating === 3 && "Bom/Regular. Pode melhorar 😐"}
-                  {reviewRating === 2 && "Ruim. Deixou a desejar 😕"}
-                  {reviewRating === 1 && "Muito ruim. Não recomendo 😡"}
-                </span>
+                <button 
+                  onClick={() => setSelectedReviewCourse(null)}
+                  className="p-2 rounded-xl text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition cursor-pointer"
+                  id="btn-close-review-form-modal"
+                >
+                  <X size={18} />
+                </button>
               </div>
 
-              {/* Textarea comment block */}
-              <div className="space-y-2">
-                <label className="block text-xs font-mono font-bold uppercase tracking-wider text-slate-400" id="label-review-text">
-                  Seu Comentário (Opcional)
-                </label>
-                <textarea
-                  value={reviewComment}
-                  onChange={(e) => setReviewComment(e.target.value)}
-                  placeholder="Escreva aqui o que você achou do conteúdo, didática, materiais e do professor..."
-                  rows={4}
-                  className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-800 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 font-medium text-xs leading-relaxed transition-all focus:ring-1 focus:ring-emerald-500/20 resize-none"
-                  id="textarea-review-comment"
-                  maxLength={500}
-                />
-                <div className="text-right text-[10px] text-slate-500 font-mono">
-                  {reviewComment.length}/500 caracteres
+              {isPast24Hours && (
+                <div className="p-3.5 bg-red-500/10 border border-red-500/20 rounded-2xl text-[11px] text-red-400 font-mono leading-relaxed">
+                  ⚠️ Esta avaliação foi realizada há mais de 24 horas. Por questões de integridade, edições e exclusões estão bloqueadas.
+                </div>
+              )}
+
+              {timeRemainingText && (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-[11px] text-amber-400 font-mono leading-relaxed flex items-center gap-2">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                  </span>
+                  <span>{timeRemainingText}</span>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                {/* Star Selection Block */}
+                <div className="text-center bg-slate-950/40 p-4 rounded-2xl border border-slate-850/60 space-y-2">
+                  <span className="block text-xs font-mono font-bold uppercase tracking-wider text-slate-400">
+                    Sua Nota
+                  </span>
+                  <div className="flex items-center justify-center gap-2">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => {
+                          if (!isPast24Hours) {
+                            setReviewRating(star);
+                          }
+                        }}
+                        disabled={isPast24Hours}
+                        className={`p-1 hover:scale-110 transition ${isPast24Hours ? "cursor-not-allowed opacity-75" : "cursor-pointer"}`}
+                        id={`btn-star-rate-${star}`}
+                      >
+                        <Star 
+                          size={32} 
+                          className={`${
+                            star <= reviewRating 
+                              ? "text-amber-400 fill-amber-400" 
+                              : "text-slate-700"
+                          } transition-all`} 
+                        />
+                      </button>
+                    ))}
+                  </div>
+                  <span className="text-[11px] font-mono font-semibold text-amber-400">
+                    {reviewRating === 5 && "Incrível! Excelente curso 🌟"}
+                    {reviewRating === 4 && "Muito bom! Vale a pena 👍"}
+                    {reviewRating === 3 && "Bom/Regular. Pode melhorar 😐"}
+                    {reviewRating === 2 && "Ruim. Deixou a desejar 😕"}
+                    {reviewRating === 1 && "Muito ruim. Não recomendo 😡"}
+                  </span>
+                </div>
+
+                {/* Textarea comment block */}
+                <div className="space-y-2">
+                  <label className="block text-xs font-mono font-bold uppercase tracking-wider text-slate-400" id="label-review-text">
+                    Seu Comentário {isPast24Hours ? "" : "(Opcional)"}
+                  </label>
+                  <textarea
+                    value={reviewComment}
+                    onChange={(e) => {
+                      if (!isPast24Hours) {
+                        setReviewComment(e.target.value);
+                      }
+                    }}
+                    disabled={isPast24Hours}
+                    placeholder="Escreva aqui o que você achou do conteúdo, didática, materiais e do professor..."
+                    rows={4}
+                    className={`w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-800 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 font-medium text-xs leading-relaxed transition-all focus:ring-1 focus:ring-emerald-500/20 resize-none ${
+                      isPast24Hours ? "opacity-65 cursor-not-allowed" : ""
+                    }`}
+                    id="textarea-review-comment"
+                    maxLength={500}
+                  />
+                  {!isPast24Hours && (
+                    <div className="text-right text-[10px] text-slate-500 font-mono">
+                      {reviewComment.length}/500 caracteres
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
 
-            {/* Action buttons */}
-            <div className="flex gap-3 pt-2 border-t border-slate-800/50">
-              <button 
-                type="button"
-                onClick={() => setSelectedReviewCourse(null)}
-                disabled={savingReview}
-                className="flex-1 py-3 px-4 rounded-xl text-xs font-mono font-bold uppercase tracking-wider text-slate-300 hover:text-slate-100 hover:bg-slate-850 border border-slate-800 transition cursor-pointer disabled:opacity-50"
-                id="btn-cancel-review"
-              >
-                Cancelar
-              </button>
-              <button 
-                type="button"
-                onClick={handleSaveReview}
-                disabled={savingReview}
-                className="flex-1 py-3 px-4 rounded-xl text-xs font-mono font-bold uppercase tracking-wider bg-emerald-400 text-slate-950 hover:bg-emerald-300 transition cursor-pointer font-black flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/10 disabled:opacity-50"
-                id="btn-submit-review"
-              >
-                {savingReview ? (
-                  <>
-                    <Loader2 size={14} className="animate-spin" />
-                    Enviando...
-                  </>
-                ) : (
-                  'Salvar Avaliação'
+              {/* Action buttons */}
+              <div className="flex flex-col gap-3 pt-2 border-t border-slate-800/50">
+                {existingReview && !isPast24Hours && (
+                  <div className="w-full">
+                    {confirmDeleteMyReview ? (
+                      <div className="flex gap-2 w-full animate-fadeIn">
+                        <button
+                          type="button"
+                          onClick={handleDeleteMyReview}
+                          disabled={savingReview}
+                          className="flex-1 py-2.5 px-4 rounded-xl text-xs font-mono font-bold uppercase tracking-wider bg-red-500 hover:bg-red-600 text-white transition cursor-pointer font-black flex items-center justify-center gap-2"
+                        >
+                          Confirmar Exclusão
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteMyReview(false)}
+                          disabled={savingReview}
+                          className="py-2.5 px-4 rounded-xl text-xs font-mono font-bold uppercase tracking-wider bg-slate-850 hover:bg-slate-800 text-slate-300 transition cursor-pointer"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteMyReview(true)}
+                        disabled={savingReview}
+                        className="w-full py-2.5 px-4 rounded-xl text-xs font-mono font-bold uppercase tracking-wider text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-red-500/25 transition cursor-pointer text-center font-bold"
+                      >
+                        Excluir Avaliação
+                      </button>
+                    )}
+                  </div>
                 )}
-              </button>
+
+                <div className="flex gap-3">
+                  <button 
+                    type="button"
+                    onClick={() => setSelectedReviewCourse(null)}
+                    disabled={savingReview}
+                    className="flex-1 py-3 px-4 rounded-xl text-xs font-mono font-bold uppercase tracking-wider text-slate-300 hover:text-slate-100 hover:bg-slate-850 border border-slate-800 transition cursor-pointer disabled:opacity-50"
+                    id="btn-cancel-review"
+                  >
+                    {isPast24Hours ? "Voltar" : "Cancelar"}
+                  </button>
+                  
+                  {!isPast24Hours && (
+                    <button 
+                      type="button"
+                      onClick={handleSaveReview}
+                      disabled={savingReview}
+                      className="flex-1 py-3 px-4 rounded-xl text-xs font-mono font-bold uppercase tracking-wider bg-emerald-400 text-slate-950 hover:bg-emerald-300 transition cursor-pointer font-black flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/10 disabled:opacity-50"
+                      id="btn-submit-review"
+                    >
+                      {savingReview ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" />
+                          Enviando...
+                        </>
+                      ) : (
+                        'Salvar Avaliação'
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
       {/* Local Toast Alert */}
       {toast && (
         <div className="fixed bottom-6 right-6 z-[99999] max-w-md bg-slate-900 border border-slate-800 p-4 rounded-2xl shadow-2xl flex items-center gap-3.5 transition-all duration-300">
