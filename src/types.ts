@@ -120,17 +120,44 @@ export interface Badge {
   criteria: string;
 }
 
+export interface DailyQuestState {
+  id: string;
+  title: string;
+  description: string;
+  xpReward: number;
+  progress: number;
+  target: number;
+  completed: boolean;
+  claimed: boolean;
+}
+
+export interface DailyQuestConfig {
+  id: string;
+  title: string;
+  description: string;
+  xpReward: number;
+  target: number;
+  enabled: boolean;
+}
+
+export interface UserDailyQuests {
+  date: string;
+  quests: DailyQuestState[];
+}
+
 export interface LeaderboardUser {
   userId: string;
   name: string;
   email?: string;
   avatar: string;
   xp: number;
+  totalXp?: number;
   level: number;
   badges: string[]; // Badge IDs
   role: 'student' | 'instructor' | 'monitor';
   following?: string[]; // list of userIds this user follows
   followers?: string[]; // list of userIds following this user
+  dailyQuests?: UserDailyQuests;
 }
 
 export interface ForumThread {

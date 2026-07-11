@@ -41,7 +41,11 @@ export function Leaderboard({ currentUserId, users }: LeaderboardProps) {
     : users.filter((u) => u.role === 'student' || u.role === 'monitor');
 
   // Sort student users by XP descending
-  const sortedUsers = [...studentsOnly].sort((a, b) => b.xp - a.xp);
+  const sortedUsers = [...studentsOnly].sort((a, b) => {
+    const xpA = a.totalXp !== undefined ? a.totalXp : a.xp;
+    const xpB = b.totalXp !== undefined ? b.totalXp : b.xp;
+    return xpB - xpA;
+  });
 
   const totalPages = Math.ceil(sortedUsers.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -154,7 +158,7 @@ export function Leaderboard({ currentUserId, users }: LeaderboardProps) {
                   
                   {/* Score */}
                   <div className="text-right min-w-[50px]">
-                    <span className="text-sm font-bold text-emerald-400 font-mono">{user.xp} XP</span>
+                    <span className="text-sm font-bold text-emerald-400 font-mono">{user.totalXp !== undefined ? user.totalXp : user.xp} XP</span>
                     <span className="block text-[8px] text-slate-500 uppercase tracking-widest mt-0.5">Pontuação</span>
                   </div>
                 </div>

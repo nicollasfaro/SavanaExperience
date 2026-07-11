@@ -4,12 +4,12 @@ import { collection, getDocs } from 'firebase/firestore';
 import Cropper from 'react-easy-crop';
 import { getCroppedImg } from '../lib/cropUtils';
 import { LeaderboardUser, Course, Turma, PreRegistration } from '../types';
-import { localDB, uploadCourseThumbnail, auth, db, handleFirestoreError, OperationType } from '../firebase';
+import { localDB, uploadCourseThumbnail, auth, db, handleFirestoreError, OperationType, DEFAULT_DAILY_QUESTS_CONFIG } from '../firebase';
 import { 
   Shield, User, UserCheck, UserX, Search, Mail, Award, Sparkles, Filter,
   Plus, Edit, Trash2, Calendar, BookOpen, Layers, Users, Upload, Image, Loader2,
   Database, RefreshCw, CheckCircle2, AlertCircle, AlertTriangle, X, FileText, UserPlus, Send, Save, Download,
-  MoreVertical, ChevronDown, Eye, Star
+  MoreVertical, ChevronDown, Eye, Star, Target, Zap, Check, Settings, MessageSquare
 } from 'lucide-react';
 import { CertificateSettingsPanel } from './CertificateSettingsPanel';
 
@@ -23,7 +23,10 @@ interface AdminPanelProps {
 
 export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: initialCourses, onPreviewCourse }: AdminPanelProps) {
   // Navigation tabs state
-  const [adminTab, setAdminTab] = useState<'users' | 'turmas' | 'courses' | 'sync' | 'rewards' | 'finance' | 'certificates' | 'pre-register'>('users');
+  const [adminTab, setAdminTab] = useState<'users' | 'turmas' | 'courses' | 'sync' | 'rewards' | 'finance' | 'certificates' | 'pre-register' | 'daily-quests'>('users');
+
+  // Daily Quests configuration state
+  const [dailyQuestsConfig, setDailyQuestsConfig] = useState<any[]>(() => localDB.getDailyQuestsConfig());
 
   // 1. Users management states
   const [searchTerm, setSearchTerm] = useState('');
@@ -185,12 +188,16 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
     const unsubTemplate = localDB.onChange('emailTemplate', () => {
       setEmailTemplate(localDB.getEmailTemplate());
     });
+    const unsubDailyQuests = localDB.onChange('dailyQuestsConfig', () => {
+      setDailyQuestsConfig(localDB.getDailyQuestsConfig());
+    });
     return () => {
       unsubTurmas();
       unsubCourses();
       unsubRewards();
       unsubPre();
       unsubTemplate();
+      unsubDailyQuests();
     };
   }, []);
 
@@ -1310,6 +1317,19 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
         >
           <UserPlus size={14} />
           Pré-Registro WhatsApp
+        </button>
+
+        <button
+          id="admin-tab-daily-quests"
+          onClick={() => setAdminTab('daily-quests')}
+          className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg transition ${
+            adminTab === 'daily-quests' 
+              ? 'bg-blue-500 text-slate-950 font-bold shadow-md' 
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Target size={14} />
+          Missões Diárias
         </button>
 
       </div>
@@ -3177,6 +3197,296 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB: DAILY QUESTS MANAGER */}
+      {adminTab === 'daily-quests' && (
+        <div className="space-y-6 text-left">
+          {/* Header Banner */}
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 relative overflow-hidden shadow-xl">
+            {/* Ambient background flare */}
+            <div className="absolute -top-12 -right-12 w-40 h-40 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
+              <div className="space-y-1.5">
+                <h3 className="font-display text-xl font-extrabold text-slate-100 flex items-center gap-2">
+                  <Target className="text-blue-400 animate-pulse" size={22} />
+                  Gerenciador de Missões Diárias
+                </h3>
+                <p className="text-xs text-slate-400 max-w-2xl leading-relaxed">
+                  Configure quais ações os alunos realizam para ganhar XP diariamente, personalize os títulos, descrições, metas de progresso e recompensas de pontos. Os alunos verão as atualizações em tempo real nos seus painéis.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (window.confirm("Deseja realmente restaurar as configurações padrão de missões diárias?")) {
+                      try {
+                        await localDB.saveDailyQuestsConfig(DEFAULT_DAILY_QUESTS_CONFIG);
+                        setDailyQuestsConfig(DEFAULT_DAILY_QUESTS_CONFIG);
+                        showToast("Missões restauradas para o padrão com sucesso!");
+                      } catch (err) {
+                        showToast("Erro ao restaurar padrões.", "error");
+                      }
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-300 transition hover:text-slate-100 cursor-pointer"
+                >
+                  <RefreshCw size={13} />
+                  Padrão do Sistema
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            {/* Left Column: List & Form Editors */}
+            <div className="xl:col-span-2 space-y-6">
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-6 shadow-sm">
+                <h4 className="font-display text-sm font-bold text-slate-200 border-b border-slate-800 pb-3 flex items-center gap-2">
+                  <Settings size={16} className="text-blue-400" />
+                  Configuração das Ações Recompensadas
+                </h4>
+
+                <div className="space-y-6">
+                  {dailyQuestsConfig.map((quest, index) => {
+                    const QuestIcon = (() => {
+                      switch (quest.id) {
+                        case 'checkin': return Zap;
+                        case 'forum_reply': return MessageSquare;
+                        case 'complete_lesson': return BookOpen;
+                        default: return Target;
+                      }
+                    })();
+
+                    return (
+                      <div 
+                        key={quest.id}
+                        className={`p-5 rounded-2xl border transition-all duration-300 ${
+                          quest.enabled 
+                            ? 'bg-slate-950/60 border-slate-800 hover:border-slate-700 shadow-sm' 
+                            : 'bg-slate-950/20 border-slate-900/60 opacity-60'
+                        }`}
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center border shrink-0 ${
+                              quest.enabled 
+                                ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' 
+                                : 'bg-slate-900 text-slate-600 border-slate-850'
+                            }`}>
+                              <QuestIcon size={18} />
+                            </div>
+                            <div>
+                              <span className="text-[10px] font-mono font-bold text-blue-400 uppercase tracking-wider">Ação: {quest.id}</span>
+                              <h5 className="text-sm font-bold text-slate-200 mt-0.5">{quest.title || 'Sem título'}</h5>
+                            </div>
+                          </div>
+
+                          {/* Enabled Toggle Switch */}
+                          <label className="inline-flex items-center gap-2.5 cursor-pointer self-start sm:self-center">
+                            <span className="text-xs text-slate-400 select-none">
+                              {quest.enabled ? 'Ativa' : 'Inativa'}
+                            </span>
+                            <div className="relative">
+                              <input 
+                                type="checkbox"
+                                checked={quest.enabled}
+                                onChange={(e) => {
+                                  const updated = [...dailyQuestsConfig];
+                                  updated[index] = { ...quest, enabled: e.target.checked };
+                                  setDailyQuestsConfig(updated);
+                                }}
+                                className="sr-only peer"
+                              />
+                              <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-400 after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500 peer-checked:after:bg-slate-950 peer-checked:after:border-blue-400"></div>
+                            </div>
+                          </label>
+                        </div>
+
+                        {/* Config Fields */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5 pt-4 border-t border-slate-900/60">
+                          <div className="space-y-1.5">
+                            <label className="block text-[10px] uppercase font-mono tracking-wider text-slate-400">Título de Exibição *</label>
+                            <input
+                              type="text"
+                              required
+                              value={quest.title}
+                              onChange={(e) => {
+                                const updated = [...dailyQuestsConfig];
+                                updated[index] = { ...quest, title: e.target.value };
+                                setDailyQuestsConfig(updated);
+                              }}
+                              placeholder="Ex: Presença Diária"
+                              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <label className="block text-[10px] uppercase font-mono tracking-wider text-slate-400">Recompensa (XP) *</label>
+                            <input
+                              type="number"
+                              required
+                              min={1}
+                              value={quest.xpReward}
+                              onChange={(e) => {
+                                const updated = [...dailyQuestsConfig];
+                                updated[index] = { ...quest, xpReward: Math.max(1, Number(e.target.value)) };
+                                setDailyQuestsConfig(updated);
+                              }}
+                              placeholder="Ex: 100"
+                              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5 md:col-span-2">
+                            <label className="block text-[10px] uppercase font-mono tracking-wider text-slate-400">Descrição/Instruções da Missão *</label>
+                            <input
+                              type="text"
+                              required
+                              value={quest.description}
+                              onChange={(e) => {
+                                const updated = [...dailyQuestsConfig];
+                                updated[index] = { ...quest, description: e.target.value };
+                                setDailyQuestsConfig(updated);
+                              }}
+                              placeholder="Ex: Acesse o portal hoje e marque sua presença"
+                              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <label className="block text-[10px] uppercase font-mono tracking-wider text-slate-400">Meta Requerida (Frequência) *</label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                required
+                                min={1}
+                                value={quest.target}
+                                onChange={(e) => {
+                                  const updated = [...dailyQuestsConfig];
+                                  updated[index] = { ...quest, target: Math.max(1, Number(e.target.value)) };
+                                  setDailyQuestsConfig(updated);
+                                }}
+                                placeholder="Ex: 1"
+                                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500"
+                              />
+                              <span className="text-xs text-slate-400 shrink-0 font-mono">vez(es) ao dia</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Save Button block */}
+                <div className="flex items-center justify-end border-t border-slate-800 pt-5">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await localDB.saveDailyQuestsConfig(dailyQuestsConfig);
+                        showToast("Configuração de missões diárias salva com sucesso!");
+                      } catch (err) {
+                        showToast("Falha ao salvar as missões.", "error");
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 px-6 py-2.5 text-xs font-bold rounded-xl bg-blue-500 hover:bg-blue-450 text-slate-950 shadow-md transition hover:scale-[1.01] cursor-pointer"
+                  >
+                    <Save size={14} />
+                    Salvar Alterações
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column: Live Student Preview */}
+            <div className="lg:col-span-1 space-y-6">
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-sm relative overflow-hidden">
+                {/* Background flare */}
+                <div className="absolute -top-12 -right-12 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+
+                <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+                  <Eye size={15} className="text-emerald-400" />
+                  <h4 className="font-display text-sm font-bold text-slate-200">Prévia do Painel do Aluno</h4>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Esta é uma demonstração em tempo real de como as missões ativas e seus respectivos prêmios em XP serão exibidos na tela inicial do aluno:
+                </p>
+
+                {/* Simulated Quest Card */}
+                <div className="bg-slate-950 border border-slate-850 p-4 rounded-2xl space-y-3.5 mt-2 shadow-inner">
+                  <div className="flex items-center justify-between gap-2 border-b border-slate-900 pb-2">
+                    <span className="text-[10px] font-mono font-bold text-slate-400 flex items-center gap-1">
+                      <Target size={11} className="text-emerald-400 animate-pulse" />
+                      Missões Diárias
+                    </span>
+                    <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/5 px-2 py-0.5 rounded-full border border-emerald-500/10">
+                      0 de {dailyQuestsConfig.filter(q => q.enabled).length} concluídas
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {dailyQuestsConfig.filter(q => q.enabled).length === 0 ? (
+                      <p className="text-center text-[11px] text-slate-500 py-4 font-mono">Nenhuma missão diária habilitada.</p>
+                    ) : (
+                      dailyQuestsConfig.filter(q => q.enabled).map(quest => {
+                        const PreviewIcon = (() => {
+                          switch (quest.id) {
+                            case 'checkin': return Zap;
+                            case 'forum_reply': return MessageSquare;
+                            case 'complete_lesson': return BookOpen;
+                            default: return Target;
+                          }
+                        })();
+                        return (
+                          <div 
+                            key={quest.id}
+                            className="p-2.5 rounded-xl border border-slate-850 bg-slate-900/40 flex items-center justify-between gap-3"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="w-7 h-7 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-400 shrink-0">
+                                <PreviewIcon size={12} />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <h5 className="text-[11px] font-bold text-slate-200 truncate">{quest.title || 'Missão'}</h5>
+                                  <span className="text-[8px] font-mono text-amber-400 bg-amber-500/5 px-1 rounded border border-amber-500/10 shrink-0">
+                                    +{quest.xpReward} XP
+                                  </span>
+                                </div>
+                                <p className="text-[9px] text-slate-400 truncate mt-0.5">{quest.description || 'Instruções'}</p>
+                              </div>
+                            </div>
+                            <span className="text-[8px] font-mono text-slate-500 bg-slate-950 border border-slate-850 px-1.5 py-0.5 rounded shrink-0">
+                              0/{quest.target}
+                            </span>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {dailyQuestsConfig.filter(q => q.enabled).length > 0 && (
+                    <div className="pt-1.5 flex items-center justify-between text-[9px] text-slate-500 font-mono border-t border-slate-900">
+                      <span>Progresso Total</span>
+                      <span>0%</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Tips block */}
+              <div className="bg-slate-900/40 border border-slate-850 rounded-2xl p-4 space-y-2 text-[11px] text-slate-400 leading-relaxed text-left">
+                <span className="font-bold text-slate-300 block">Dicas de Gamificação 💡</span>
+                <p>• <strong>Check-in Diário:</strong> Excelente para criar retenção e trazer o aluno todos os dias de volta à plataforma.</p>
+                <p>• <strong>Fórum:</strong> Incentiva a colaboração e a formação de comunidades de aprendizagem.</p>
+                <p>• <strong>XP Balanceada:</strong> Ofereça mais pontos para lições completadas para incentivar o progresso de estudos real.</p>
+              </div>
             </div>
           </div>
         </div>

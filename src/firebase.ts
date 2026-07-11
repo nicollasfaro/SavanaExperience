@@ -11,7 +11,7 @@ import {
 } from 'firebase/firestore';
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, signInAnonymously, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { Course, CourseModule, StudentProgress, ForumThread, ChatMessage, LeaderboardUser, Turma, Reward, Redemption, CertificateSettings, IssuedCertificate, PreRegistration, NotificationItem } from './types';
+import { Course, CourseModule, StudentProgress, ForumThread, ChatMessage, LeaderboardUser, Turma, Reward, Redemption, CertificateSettings, IssuedCertificate, PreRegistration, NotificationItem, DailyQuestState, UserDailyQuests, DailyQuestConfig } from './types';
 import { INITIAL_COURSES, INITIAL_MODULES, INITIAL_LEADERBOARD, INITIAL_DISCUSSION_THREADS, INITIAL_CHAT_MESSAGES, INITIAL_TURMAS, INITIAL_CERTIFICATE_SETTINGS } from './data';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -20,6 +20,33 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
+
+export const DEFAULT_DAILY_QUESTS_CONFIG: DailyQuestConfig[] = [
+  {
+    id: 'checkin',
+    title: 'Presença Diária',
+    description: 'Acesse a plataforma hoje e clique para registrar sua presença.',
+    xpReward: 50,
+    target: 1,
+    enabled: true
+  },
+  {
+    id: 'forum_reply',
+    title: 'Ajudar a Comunidade',
+    description: 'Envie pelo menos 1 resposta ou comentário no fórum de discussão.',
+    xpReward: 150,
+    target: 1,
+    enabled: true
+  },
+  {
+    id: 'complete_lesson',
+    title: 'Módulo de Estudos',
+    description: 'Conclua pelo menos 1 aula ou lição de seus cursos ativos.',
+    xpReward: 200,
+    target: 1,
+    enabled: true
+  }
+];
 
 export enum OperationType {
   CREATE = 'create',
@@ -589,6 +616,20 @@ Dr. Gabriel e equipe Savana Experience.`);
     });
     this.activeUnsubscribes.push(unsubEmailTemplate);
 
+    // Daily Quests Config Sync
+    const unsubDailyQuests = onSnapshot(doc(db, 'settings', 'daily_quests'), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        this.set('dailyQuestsConfig', data.config || DEFAULT_DAILY_QUESTS_CONFIG);
+      } else {
+        this.set('dailyQuestsConfig', DEFAULT_DAILY_QUESTS_CONFIG);
+      }
+      this.notify('dailyQuestsConfig');
+    }, (err) => {
+      console.warn("Daily Quests Config Sync error: ", err.message);
+    });
+    this.activeUnsubscribes.push(unsubDailyQuests);
+
     // Issued Certificates Sync
     const unsubIssuedCerts = onSnapshot(
       query(collection(db, 'issuedCertificates'), where('userId', '==', user.uid)),
@@ -756,6 +797,28 @@ Dr. Gabriel e equipe Savana Experience.`);
       }));
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'settings/email_template');
+    }
+  }
+
+  // Daily Quests Config
+  getDailyQuestsConfig(): DailyQuestConfig[] {
+    return this.get('dailyQuestsConfig', DEFAULT_DAILY_QUESTS_CONFIG);
+  }
+
+  async saveDailyQuestsConfig(config: DailyQuestConfig[]) {
+    this.set('dailyQuestsConfig', config);
+    this.notify('dailyQuestsConfig');
+
+    if (!this.isFirebaseAuthenticated) return;
+
+    try {
+      await setDoc(doc(db, 'settings', 'daily_quests'), {
+        id: 'daily_quests',
+        config,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'settings/daily_quests');
     }
   }
 
@@ -953,6 +1016,7 @@ Dr. Gabriel e equipe Savana Experience.`);
       }
 
       await this.updateLeaderboardXP(userId, xpReward);
+      await this.incrementDailyQuestProgress(userId, 'complete_lesson', 1);
     }
   }
 
@@ -965,8 +1029,14 @@ Dr. Gabriel e equipe Savana Experience.`);
     const board = this.getLeaderboard();
     const user = board.find(u => u.userId === userId);
     if (user) {
+      if (user.totalXp === undefined) {
+        user.totalXp = user.xp;
+      }
       user.xp += extraXp;
-      user.level = Math.floor(user.xp / 1000) + 1;
+      if (extraXp > 0) {
+        user.totalXp += extraXp;
+      }
+      user.level = Math.floor(user.totalXp / 1000) + 1;
       this.set('leaderboard', board);
       this.notify('leaderboard');
 
@@ -978,6 +1048,179 @@ Dr. Gabriel e equipe Savana Experience.`);
         handleFirestoreError(err, OperationType.WRITE, `leaderboard/${userId}`);
       }
     }
+  }
+
+  getOrInitializeDailyQuests(userId: string): DailyQuestState[] {
+    const board = this.getLeaderboard();
+    const user = board.find(u => u.userId === userId);
+    const today = new Date().toISOString().split('T')[0];
+
+    if (user) {
+      if (user.dailyQuests && user.dailyQuests.date === today) {
+        const config = this.getDailyQuestsConfig();
+        const existingQuests = user.dailyQuests.quests || [];
+        
+        // Reconcile existing quests with the latest config
+        const reconciledQuests: DailyQuestState[] = config
+          .filter(q => q.enabled)
+          .map(q => {
+            const existing = existingQuests.find(eq => eq.id === q.id);
+            if (existing) {
+              const progress = existing.progress;
+              const target = q.target;
+              const completed = progress >= target;
+              return {
+                ...existing,
+                title: q.title,
+                description: q.description,
+                xpReward: q.xpReward,
+                target: target,
+                completed: completed
+              };
+            } else {
+              return {
+                id: q.id,
+                title: q.title,
+                description: q.description,
+                xpReward: q.xpReward,
+                progress: 0,
+                target: q.target,
+                completed: false,
+                claimed: false
+              };
+            }
+          });
+
+        // Check if reconciledQuests is structurally or value-wise different from existingQuests
+        const hasChanges = JSON.stringify(existingQuests) !== JSON.stringify(reconciledQuests);
+        if (hasChanges) {
+          user.dailyQuests.quests = reconciledQuests;
+          this.set('leaderboard', board);
+          this.notify('leaderboard');
+
+          if (this.isFirebaseAuthenticated) {
+            setDoc(doc(db, 'leaderboard', userId), cleanUndefined(user)).catch(err => {
+              console.warn("Silent fallback: Failed to sync reconciled daily quests to Firestore:", err);
+            });
+          }
+        }
+        return reconciledQuests;
+      }
+
+      // Initialize new ones from custom configurations
+      const config = this.getDailyQuestsConfig();
+      const newQuests: DailyQuestState[] = config
+        .filter(q => q.enabled)
+        .map(q => ({
+          id: q.id,
+          title: q.title,
+          description: q.description,
+          xpReward: q.xpReward,
+          progress: 0,
+          target: q.target,
+          completed: false,
+          claimed: false
+        }));
+
+      user.dailyQuests = {
+        date: today,
+        quests: newQuests
+      };
+
+      this.set('leaderboard', board);
+      this.notify('leaderboard');
+
+      if (this.isFirebaseAuthenticated) {
+        setDoc(doc(db, 'leaderboard', userId), cleanUndefined(user)).catch(err => {
+          console.warn("Silent fallback: Failed to sync initialized daily quests to Firestore:", err);
+        });
+      }
+
+      return newQuests;
+    }
+
+    return [];
+  }
+
+  async incrementDailyQuestProgress(userId: string, questId: string, amount: number = 1) {
+    const board = this.getLeaderboard();
+    const user = board.find(u => u.userId === userId);
+    const today = new Date().toISOString().split('T')[0];
+
+    if (user) {
+      // Ensure quests are initialized for today
+      if (!user.dailyQuests || user.dailyQuests.date !== today) {
+        this.getOrInitializeDailyQuests(userId);
+      }
+
+      // Refetch from board since getOrInitializeDailyQuests modified it
+      const u = board.find(usr => usr.userId === userId);
+      if (u && u.dailyQuests && u.dailyQuests.quests) {
+        const quest = u.dailyQuests.quests.find(q => q.id === questId);
+        if (quest && !quest.completed) {
+          quest.progress = Math.min(quest.progress + amount, quest.target);
+          if (quest.progress >= quest.target) {
+            quest.completed = true;
+            
+            // Create notification
+            const notif: NotificationItem = {
+              id: `quest-${questId}-${Date.now()}`,
+              userId,
+              title: 'Missão Diária Concluída! 🎉',
+              message: `Você concluiu a missão "${quest.title}"! Vá ao seu Painel de Missões para resgatar seus +${quest.xpReward} XP.`,
+              type: 'course',
+              read: false,
+              createdAt: new Date().toISOString()
+            };
+            await this.saveNotification(notif);
+          }
+
+          this.set('leaderboard', board);
+          this.notify('leaderboard');
+
+          if (this.isFirebaseAuthenticated) {
+            try {
+               await setDoc(doc(db, 'leaderboard', userId), cleanUndefined(u));
+            } catch (err) {
+               console.warn("Silent fallback: Failed to sync quest progress to Firestore:", err);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  async claimDailyQuestReward(userId: string, questId: string): Promise<boolean> {
+    const board = this.getLeaderboard();
+    const user = board.find(u => u.userId === userId);
+
+    if (user && user.dailyQuests && user.dailyQuests.quests) {
+      const quest = user.dailyQuests.quests.find(q => q.id === questId);
+      if (quest && quest.completed && !quest.claimed) {
+        quest.claimed = true;
+        
+        this.set('leaderboard', board);
+        this.notify('leaderboard');
+
+        // Give XP
+        await this.updateLeaderboardXP(userId, quest.xpReward);
+
+        // Add a notification for redemption success
+        const notif: NotificationItem = {
+          id: `quest-claim-${questId}-${Date.now()}`,
+          userId,
+          title: 'Recompensa Resgatada! ⭐',
+          message: `Você resgatou +${quest.xpReward} XP pela missão "${quest.title}". Continue assim!`,
+          type: 'course',
+          read: false,
+          createdAt: new Date().toISOString()
+        };
+        await this.saveNotification(notif);
+
+        return true;
+      }
+    }
+    return false;
   }
 
   async unlockBadge(userId: string, badgeId: string) {
@@ -1107,7 +1350,17 @@ Dr. Gabriel e equipe Savana Experience.`);
   async saveForumThread(thread: ForumThread) {
     const list = this.getForumThreads();
     const idx = list.findIndex(t => t.id === thread.id);
-    if (idx >= 0) list[idx] = thread;
+    if (idx >= 0) {
+      const oldRepliesCount = list[idx].replies ? list[idx].replies.length : 0;
+      const newRepliesCount = thread.replies ? thread.replies.length : 0;
+      if (newRepliesCount > oldRepliesCount) {
+        const lastReply = thread.replies[newRepliesCount - 1];
+        if (lastReply) {
+          await this.incrementDailyQuestProgress(lastReply.authorId, 'forum_reply', 1);
+        }
+      }
+      list[idx] = thread;
+    }
     else list.push(thread);
     this.set('threads', list);
     this.notify('threads');

@@ -164,7 +164,8 @@ export function UserProfileModal({ userId, isOpen, onClose, currentUserId }: Use
   const isSelf = userId === currentUserId;
 
   // XP Progress Calculations (1000 XP per level)
-  const currentLevelXp = user.xp % 1000;
+  const totalXp = user.totalXp !== undefined ? user.totalXp : user.xp;
+  const currentLevelXp = totalXp % 1000;
   const progressPercent = Math.min((currentLevelXp / 1000) * 100, 100);
 
   // User posts inside the social feed
@@ -341,9 +342,9 @@ export function UserProfileModal({ userId, isOpen, onClose, currentUserId }: Use
               <div className="flex justify-between items-center mb-2">
                 <span className="text-xs text-slate-400 flex items-center gap-1.5 font-bold font-mono uppercase tracking-wider">
                   <Flame className="text-orange-500" size={14} />
-                  Experiência Geral
+                  Experiência Geral (Total)
                 </span>
-                <span className="text-xs text-emerald-400 font-mono font-bold">{user.xp} XP</span>
+                <span className="text-xs text-emerald-400 font-mono font-bold">{totalXp} XP</span>
               </div>
               <div className="w-full bg-slate-900 rounded-full h-2.5 overflow-hidden">
                 <div 
@@ -351,9 +352,10 @@ export function UserProfileModal({ userId, isOpen, onClose, currentUserId }: Use
                   style={{ width: `${progressPercent}%` }}
                 />
               </div>
-              <span className="text-[10px] text-slate-500 mt-2 font-mono">
-                Progresso de nível atual: {currentLevelXp} / 1000 XP
-              </span>
+              <div className="flex justify-between items-center text-[10px] text-slate-500 mt-2 font-mono">
+                <span>Progresso de nível atual: {currentLevelXp} / 1000 XP</span>
+                <span className="text-amber-400 font-bold">Saldo p/ Loja: {user.xp} XP</span>
+              </div>
             </div>
 
             {/* Social Stats Card */}

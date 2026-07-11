@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Course, LeaderboardUser, NotificationItem, ForumThread } from '../types';
 import { 
   BookOpen, Activity, Star, Calendar, Edit2, X, Camera, Loader2, Check, Award,
-  Heart, MessageSquare, Send, Users, UserPlus, UserMinus, Flame, RefreshCw, Trash2 
+  Heart, MessageSquare, Send, Users, UserPlus, UserMinus, Flame, RefreshCw, Trash2,
+  Sparkles, Target, Trophy, Gift, Zap, CheckCircle2, Circle
 } from 'lucide-react';
 import { CourseCard } from './CourseCard';
 import { updateUserProfile, localDB } from '../firebase';
@@ -76,8 +77,9 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
   // Fake recent activity from notifications
   const recentActivity = notifications.slice(0, 5);
   
-  const xpToNextLevel = user.level * 1000;
-  const progressPercent = Math.min((user.xp / xpToNextLevel) * 100, 100);
+  const totalXp = user.totalXp !== undefined ? user.totalXp : user.xp;
+  const currentLevelXp = totalXp % 1000;
+  const progressPercent = Math.min((currentLevelXp / 1000) * 100, 100);
 
   // States for Profile Editing
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -104,6 +106,55 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
       setToast(null);
     }, 4000);
   };
+
+  // Initialize and reconcile Daily Quests on mount, when user changes, or when config changes
+  useEffect(() => {
+    localDB.getOrInitializeDailyQuests(user.userId);
+
+    const unsubConfig = localDB.onChange('dailyQuestsConfig', () => {
+      localDB.getOrInitializeDailyQuests(user.userId);
+    });
+
+    return () => {
+      unsubConfig();
+    };
+  }, [user.userId]);
+
+  const [claimingQuestId, setClaimingQuestId] = useState<string | null>(null);
+  const [checkingIn, setCheckingIn] = useState(false);
+
+  const handleClaimReward = async (questId: string) => {
+    setClaimingQuestId(questId);
+    try {
+      const success = await localDB.claimDailyQuestReward(user.userId, questId);
+      if (success) {
+        showLocalToast("Parabéns! Recompensa resgatada com sucesso.", "success");
+      } else {
+        showLocalToast("Não foi possível resgatar a recompensa.", "error");
+      }
+    } catch (err) {
+      console.error(err);
+      showLocalToast("Erro ao resgatar recompensa.", "error");
+    } finally {
+      setClaimingQuestId(null);
+    }
+  };
+
+  const handleCheckIn = async () => {
+    setCheckingIn(true);
+    try {
+      await localDB.incrementDailyQuestProgress(user.userId, 'checkin', 1);
+      showLocalToast("Presença Diária registrada! Missão concluída.", "success");
+    } catch (err) {
+      console.error(err);
+      showLocalToast("Erro ao registrar presença.", "error");
+    } finally {
+      setCheckingIn(false);
+    }
+  };
+
+  const dailyQuests = user.dailyQuests?.quests || [];
+  const totalPossibleXP = dailyQuests.reduce((sum, q) => sum + (q.xpReward || 0), 0);
 
   // Synchronize previously saved rating and comment
   useEffect(() => {
@@ -388,13 +439,17 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
           <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl w-full md:w-64">
             <div className="flex justify-between items-center mb-2">
               <span className="text-xs text-slate-450 font-bold uppercase tracking-wider">Level {user.level}</span>
-              <span className="text-xs text-emerald-400 font-bold">{user.xp} / {xpToNextLevel} XP</span>
+              <span className="text-xs text-emerald-400 font-bold">{currentLevelXp} / 1000 XP</span>
             </div>
-            <div className="h-2 w-full bg-slate-950 rounded-full overflow-hidden">
+            <div className="h-2 w-full bg-slate-950 rounded-full overflow-hidden mb-1.5">
               <div 
                 className="h-full bg-emerald-500 rounded-full transition-all duration-1000"
                 style={{ width: `${progressPercent}%` }}
               ></div>
+            </div>
+            <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono">
+              <span>Total: {totalXp} XP</span>
+              <span className="text-amber-400 font-bold">Saldo p/ Loja: {user.xp} XP</span>
             </div>
           </div>
         </div>
@@ -612,6 +667,174 @@ export function StudentDashboard({ courses, enrolledCourseIds, user, notificatio
 
         {/* Right Column: Feed Social Savana */}
         <div className="space-y-6">
+          
+          {/* Missões Diárias Section */}
+          <div className="bg-slate-950 border border-slate-850 p-6 rounded-3xl space-y-4 shadow-xl relative overflow-hidden">
+            {/* Dynamic visual touch: background flare */}
+            <div className="absolute -top-12 -right-12 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+            
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shadow-sm shrink-0">
+                  <Target size={18} className="animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="font-display text-base font-bold text-slate-100 flex items-center gap-1.5">
+                    Missões Diárias
+                    <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                      {dailyQuests.filter(q => q.completed).length} de {dailyQuests.length || 3}
+                    </span>
+                  </h3>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Complete hoje para ganhar XP extra!</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 self-start sm:self-center bg-slate-900 border border-slate-850 px-2.5 py-1 rounded-xl text-[10px] font-mono font-bold text-slate-400 shrink-0">
+                <Gift size={12} className="text-amber-400 animate-bounce" />
+                <span>+{totalPossibleXP} XP Máx</span>
+              </div>
+            </div>
+
+            {/* Overall Progress Bar */}
+            {dailyQuests.length > 0 && (
+              <div className="space-y-1 pt-1">
+                <div className="h-1.5 w-full bg-slate-900 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500"
+                    style={{ width: `${(dailyQuests.filter(q => q.completed).length / dailyQuests.length) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* List of Quests */}
+            <div className="space-y-3 pt-1">
+              {dailyQuests.length === 0 ? (
+                <div className="py-4 text-center text-slate-500 text-xs">
+                  Carregando missões...
+                </div>
+              ) : (
+                dailyQuests.map((quest) => {
+                  const QuestIcon = (() => {
+                    switch (quest.id) {
+                      case 'checkin': return Zap;
+                      case 'forum_reply': return MessageSquare;
+                      case 'complete_lesson': return BookOpen;
+                      default: return Target;
+                    }
+                  })();
+
+                  const isCompleted = quest.completed;
+                  const isClaimed = quest.claimed;
+
+                  return (
+                    <div 
+                      key={quest.id}
+                      className={`p-3.5 rounded-2xl border transition-all duration-300 flex items-center justify-between gap-4 ${
+                        isClaimed
+                          ? 'bg-slate-950/40 border-slate-900/60 opacity-60'
+                          : isCompleted
+                          ? 'bg-emerald-500/5 border-emerald-500/20 shadow-[0_0_12px_rgba(16,185,129,0.04)]'
+                          : 'bg-slate-900/60 border-slate-850/60 hover:border-slate-800'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        {/* Icon Wrapper */}
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
+                          isClaimed
+                            ? 'bg-slate-900 text-slate-500 border-slate-850'
+                            : isCompleted
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                            : 'bg-slate-950 text-slate-400 border-slate-850'
+                        }`}>
+                          <QuestIcon size={16} />
+                        </div>
+
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <h4 className="text-xs font-bold text-slate-200 truncate">{quest.title}</h4>
+                            <span className="text-[9px] font-mono font-extrabold text-amber-400 bg-amber-500/5 px-1.5 py-0.2 rounded border border-amber-500/10 shrink-0">
+                              +{quest.xpReward} XP
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 line-clamp-1 mt-0.5">{quest.description}</p>
+                          
+                          {/* Mini Progress */}
+                          <div className="flex items-center gap-2 mt-1">
+                            <div className="w-16 h-1 bg-slate-900 rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-emerald-500 rounded-full"
+                                style={{ width: `${(quest.progress / quest.target) * 100}%` }}
+                              />
+                            </div>
+                            <span className="text-[9px] font-mono text-slate-500">
+                              {quest.progress}/{quest.target}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Action / Reward button */}
+                      <div className="shrink-0">
+                        {isClaimed ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-mono font-bold text-slate-500 bg-slate-900 border border-slate-850 rounded-xl">
+                            <Check size={10} className="text-slate-500" />
+                            Resgatado
+                          </span>
+                        ) : isCompleted ? (
+                          <button
+                            type="button"
+                            onClick={() => handleClaimReward(quest.id)}
+                            disabled={claimingQuestId === quest.id}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 text-[10px] font-mono font-black uppercase tracking-wider bg-emerald-400 hover:bg-emerald-300 text-slate-950 rounded-xl transition duration-300 shadow shadow-emerald-500/10 hover:scale-[1.02] cursor-pointer animate-pulse"
+                          >
+                            {claimingQuestId === quest.id ? (
+                              <Loader2 size={10} className="animate-spin" />
+                            ) : (
+                              <Trophy size={10} />
+                            )}
+                            Resgatar
+                          </button>
+                        ) : (
+                          <>
+                            {quest.id === 'checkin' ? (
+                              <button
+                                type="button"
+                                onClick={handleCheckIn}
+                                disabled={checkingIn}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-mono font-bold bg-slate-900 hover:bg-slate-850 text-slate-300 border border-slate-800 rounded-xl transition cursor-pointer"
+                              >
+                                {checkingIn ? (
+                                  <Loader2 size={10} className="animate-spin" />
+                                ) : (
+                                  <Zap size={10} className="text-amber-400 animate-bounce" />
+                                )}
+                                Marcar
+                              </button>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[9px] font-mono font-bold text-slate-500 bg-slate-950 border border-slate-900/60 rounded-xl">
+                                Em progresso
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Extra visual motivation when all are completed */}
+            {dailyQuests.length > 0 && dailyQuests.every(q => q.completed) && (
+              <div className="p-3 bg-emerald-500/5 border border-emerald-500/10 rounded-2xl flex items-center gap-2.5 mt-2">
+                <Sparkles size={14} className="text-amber-400 shrink-0" />
+                <p className="text-[10px] font-medium text-emerald-300 leading-relaxed">
+                  Incrível! Você completou todos os objetivos de hoje. Continue brilhando! 🚀
+                </p>
+              </div>
+            )}
+          </div>
+
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Users className="text-emerald-400" size={20} />
