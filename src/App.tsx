@@ -543,6 +543,95 @@ export default function App() {
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
   const [isAdminPreviewing, setIsAdminPreviewing] = useState(false);
   const [adminPreviewHasAccess, setAdminPreviewHasAccess] = useState(true);
+
+  // States for automatic course evaluation when 100% finished
+  const [evaluationCourse, setEvaluationCourse] = useState<Course | null>(null);
+  const [evalRating, setEvalRating] = useState(5);
+  const [evalComment, setEvalComment] = useState('');
+  const [evalSaving, setEvalSaving] = useState(false);
+
+  const handleSaveEvaluation = async (courseToSave: Course, ratingVal: number, commentVal: string) => {
+    if (!authUser) return;
+    setEvalSaving(true);
+    try {
+      const user = {
+        userId: authUser.uid,
+        name: authUser.displayName || authUser.email?.split('@')[0] || 'Estudante',
+        avatar: authUser.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'
+      };
+
+      const reviews = courseToSave.reviews || [];
+      const existingIndex = reviews.findIndex(r => r.userId === user.userId);
+      
+      let updatedReviews = [...reviews];
+      if (existingIndex >= 0) {
+        const existingReview = reviews[existingIndex];
+        if (existingReview.approved === true) {
+          updatedReviews[existingIndex] = {
+            ...existingReview,
+            pendingEdit: {
+              rating: ratingVal,
+              comment: commentVal,
+              createdAt: new Date().toISOString()
+            }
+          };
+        } else {
+          updatedReviews[existingIndex] = {
+            ...existingReview,
+            rating: ratingVal,
+            comment: commentVal,
+            createdAt: new Date().toISOString(),
+            approved: false
+          };
+        }
+      } else {
+        const newReview = {
+          userId: user.userId,
+          userName: user.name,
+          userAvatar: user.avatar,
+          rating: ratingVal,
+          comment: commentVal,
+          createdAt: new Date().toISOString(),
+          approved: false
+        };
+        updatedReviews.push(newReview);
+      }
+      
+      const approvedReviews = updatedReviews.filter(r => r.approved === true);
+      const averageRating = approvedReviews.length > 0
+        ? parseFloat((approvedReviews.reduce((sum, r) => sum + r.rating, 0) / approvedReviews.length).toFixed(1))
+        : (courseToSave.rating || 4.8);
+        
+      const updatedCourse: Course = {
+        ...courseToSave,
+        reviews: updatedReviews,
+        rating: averageRating
+      };
+      
+      await localDB.saveCourse(updatedCourse);
+      
+      if (existingIndex < 0) {
+        await localDB.updateLeaderboardXP(user.userId, 20);
+        alert("Avaliação enviada com sucesso! Você ganhou +20 XP! 🎉 O administrador irá revisar seu feedback.");
+      } else {
+        const wasApproved = reviews[existingIndex]?.approved === true;
+        if (wasApproved) {
+          alert("Edição enviada para aprovação do administrador! A avaliação antiga continuará visível até lá.");
+        } else {
+          alert("Avaliação atualizada com sucesso e enviada para aprovação!");
+        }
+      }
+      
+      setEvaluationCourse(null);
+      setEvalComment('');
+      setEvalRating(5);
+    } catch (err) {
+      console.error("Error saving evaluation:", err);
+      alert("Erro ao salvar avaliação.");
+    } finally {
+      setEvalSaving(false);
+    }
+  };
   const hasAccess = selectedCourse 
     ? (isAdminPreviewing 
         ? adminPreviewHasAccess 
@@ -1028,6 +1117,40 @@ export default function App() {
     };
     setNotifications(prev => [successNotif, ...prev]);
 
+    // Check if the course is now 100% complete
+    const courseModules = modules.filter(m => m.courseId === selectedCourse.id);
+    const courseLessons = courseModules.flatMap(m => (m.isLiveClass || m.isLive) 
+      ? [{ 
+          id: `live-session-${m.id}`, 
+          moduleId: m.id, 
+          title: `Aula Ao Vivo: ${m.title}`, 
+          description: m.description, 
+          order: 1, 
+          duration: '1h', 
+          type: 'video' 
+        } as any] 
+      : (m.lessons || [])
+    );
+    const completedLessonsCount = courseLessons.filter(l => {
+      if (l.id.startsWith('live-session-')) {
+        const modId = l.id.replace('live-session-', '');
+        const mod = courseModules.find(m => m.id === modId);
+        if (mod && (mod.isLiveClass || mod.isLive) && !mod.isLive) {
+          return true;
+        }
+      }
+      return prog.completedLessons.includes(l.id);
+    }).length;
+    
+    const isNowFinished = courseLessons.length > 0 && completedLessonsCount === courseLessons.length;
+    const hasAlreadyReviewed = (selectedCourse.reviews || []).some(r => r.userId === currentUserId);
+    
+    if (isNowFinished && !hasAlreadyReviewed) {
+      setTimeout(() => {
+        setEvaluationCourse(selectedCourse);
+      }, 1000);
+    }
+
     setCompletionCountdown(5);
   };
 
@@ -1134,6 +1257,42 @@ export default function App() {
           createdAt: new Date().toISOString()
         };
         setNotifications(prev => [qNotif, ...prev]);
+
+        // Check if the course is now 100% complete
+        if (selectedCourse) {
+          const courseModules = modules.filter(m => m.courseId === selectedCourse.id);
+          const courseLessons = courseModules.flatMap(m => (m.isLiveClass || m.isLive) 
+            ? [{ 
+                id: `live-session-${m.id}`, 
+                moduleId: m.id, 
+                title: `Aula Ao Vivo: ${m.title}`, 
+                description: m.description, 
+                order: 1, 
+                duration: '1h', 
+                type: 'video' 
+              } as any] 
+            : (m.lessons || [])
+          );
+          const completedLessonsCount = courseLessons.filter(l => {
+            if (l.id.startsWith('live-session-')) {
+              const modId = l.id.replace('live-session-', '');
+              const mod = courseModules.find(m => m.id === modId);
+              if (mod && (mod.isLiveClass || mod.isLive) && !mod.isLive) {
+                return true;
+              }
+            }
+            return prog.completedLessons.includes(l.id);
+          }).length;
+          
+          const isNowFinished = courseLessons.length > 0 && completedLessonsCount === courseLessons.length;
+          const hasAlreadyReviewed = (selectedCourse.reviews || []).some(r => r.userId === currentUserId);
+          
+          if (isNowFinished && !hasAlreadyReviewed) {
+            setTimeout(() => {
+              setEvaluationCourse(selectedCourse);
+            }, 1000);
+          }
+        }
       }
       
       setAllLeaderboard(localDB.getLeaderboard());
@@ -2976,6 +3135,40 @@ export default function App() {
                                           setTimeout(() => {
                                             alert('✓ Presença registrada! Você ganhou +200 XP por participar da aula no Microsoft Teams.');
                                           }, 200);
+
+                                          // Check if now 100% complete
+                                          const courseModules = modules.filter(m => m.courseId === selectedCourse.id);
+                                          const courseLessons = courseModules.flatMap(m => (m.isLiveClass || m.isLive) 
+                                            ? [{ 
+                                                id: `live-session-${m.id}`, 
+                                                moduleId: m.id, 
+                                                title: `Aula Ao Vivo: ${m.title}`, 
+                                                description: m.description, 
+                                                order: 1, 
+                                                duration: '1h', 
+                                                type: 'video' 
+                                              } as any] 
+                                            : (m.lessons || [])
+                                          );
+                                          const completedLessonsCount = courseLessons.filter(l => {
+                                            if (l.id.startsWith('live-session-')) {
+                                              const modId = l.id.replace('live-session-', '');
+                                              const mod = courseModules.find(m => m.id === modId);
+                                              if (mod && (mod.isLiveClass || mod.isLive) && !mod.isLive) {
+                                                return true;
+                                              }
+                                            }
+                                            return updatedCompleted.includes(l.id);
+                                          }).length;
+                                          
+                                          const isNowFinished = courseLessons.length > 0 && completedLessonsCount === courseLessons.length;
+                                          const hasAlreadyReviewed = (selectedCourse.reviews || []).some(r => r.userId === currentUserId);
+                                          
+                                          if (isNowFinished && !hasAlreadyReviewed) {
+                                            setTimeout(() => {
+                                              setEvaluationCourse(selectedCourse);
+                                            }, 1000);
+                                          }
                                         }
                                       }
                                     }}
@@ -3334,6 +3527,94 @@ export default function App() {
           currentUserRole={currentUserRole}
         />
       ) */}
+
+      {/* AUTOMATIC COURSE EVALUATION POPUP */}
+      {evaluationCourse && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 sm:p-7 shadow-2xl relative overflow-hidden">
+            
+            {/* Design accents */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl" />
+
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <span className="text-[9px] uppercase font-mono tracking-widest text-emerald-400 font-bold block mb-1">PARABÉNS! CURSO CONCLUÍDO</span>
+                <h3 className="font-display text-lg font-extrabold text-slate-100">Avalie sua Experiência</h3>
+              </div>
+              <button
+                onClick={() => {
+                  setEvaluationCourse(null);
+                  setEvalComment('');
+                  setEvalRating(5);
+                }}
+                className="text-slate-400 hover:text-slate-200 text-xs font-bold bg-slate-850 hover:bg-slate-800 px-2.5 py-1.5 rounded-lg transition"
+              >
+                Depois
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400 mb-6 leading-relaxed">
+              Você completou 100% do curso <strong>"{evaluationCourse.title}"</strong>! Sua opinião é fundamental para mantermos o alto padrão científico e didático.
+            </p>
+
+            <div className="space-y-5">
+              {/* Star selector */}
+              <div className="flex flex-col items-center justify-center space-y-2 py-2 bg-slate-950 rounded-2xl border border-slate-850">
+                <span className="text-[10px] text-slate-400 font-mono uppercase tracking-wider block font-bold text-center">Sua nota para o curso</span>
+                <div className="flex items-center gap-2">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setEvalRating(star)}
+                      className="text-2xl transition hover:scale-110 active:scale-95 cursor-pointer"
+                    >
+                      <Star
+                        size={28}
+                        className={
+                          star <= evalRating
+                            ? 'fill-amber-400 text-amber-400'
+                            : 'text-slate-600 hover:text-slate-500'
+                        }
+                      />
+                    </button>
+                  ))}
+                </div>
+                <span className="text-xs font-bold text-slate-300">
+                  {evalRating === 5 && ' Excelente! ⭐⭐⭐⭐⭐'}
+                  {evalRating === 4 && ' Muito Bom! ⭐⭐⭐⭐'}
+                  {evalRating === 3 && ' Bom! ⭐⭐⭐'}
+                  {evalRating === 2 && ' Regular ⭐⭐'}
+                  {evalRating === 1 && ' Ruim ⭐'}
+                </span>
+              </div>
+
+              {/* Comment Input */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] text-slate-400 font-mono uppercase tracking-wider block font-bold">Escreva um comentário (Opcional)</label>
+                <textarea
+                  value={evalComment}
+                  onChange={(e) => setEvalComment(e.target.value)}
+                  placeholder="Compartilhe o que achou das aulas, didática e do material complementar..."
+                  rows={4}
+                  className="w-full text-xs bg-slate-950 border border-slate-850 rounded-xl p-3 text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-transparent resize-none leading-relaxed"
+                />
+              </div>
+
+              {/* Submit Buttons */}
+              <button
+                type="button"
+                disabled={evalSaving}
+                onClick={() => handleSaveEvaluation(evaluationCourse, evalRating, evalComment)}
+                className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/10 cursor-pointer"
+              >
+                {evalSaving ? 'Enviando avaliação...' : 'Enviar Avaliação (+20 XP)'}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
       {viewingCertificate && selectedCourse && (
         <CertificateModal
