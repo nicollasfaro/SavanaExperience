@@ -26,9 +26,16 @@ export function Store({ currentUserId, rewards, userXp, onRedeem }: StoreProps) 
 
   useEffect(() => {
     loadRedemptions();
+    const unsub = localDB.onChange('redemptions', loadRedemptions);
+    return () => unsub();
   }, [currentUserId]);
 
   const handleRedeemClick = (reward: Reward) => {
+    const alreadyRedeemed = userRedemptions.some(r => r.rewardId === reward.id);
+    if (reward.xpCost === 0 && alreadyRedeemed) {
+      alert("Cupons ou prêmios de valor 0 XP só podem ser resgatados uma única vez por aluno.");
+      return;
+    }
     if (userXp < reward.xpCost) {
       alert("Você não tem saldo de XP suficiente para resgatar este prêmio.");
       return;
@@ -45,6 +52,14 @@ export function Store({ currentUserId, rewards, userXp, onRedeem }: StoreProps) 
   const handleRedeemConfirm = async () => {
     if (!rewardToRedeem) return;
     const reward = rewardToRedeem;
+
+    const alreadyRedeemed = userRedemptions.some(r => r.rewardId === reward.id);
+    if (reward.xpCost === 0 && alreadyRedeemed) {
+      alert("Este cupom gratuito (0 XP) já foi resgatado por você. O limite é de 1 resgate por aluno.");
+      setRewardToRedeem(null);
+      return;
+    }
+
     setRewardToRedeem(null);
     setRedeemingId(reward.id);
     
@@ -124,7 +139,26 @@ export function Store({ currentUserId, rewards, userXp, onRedeem }: StoreProps) 
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {rewards.map(reward => {
+            const redemptionsForReward = userRedemptions.filter(r => r.rewardId === reward.id);
+            const usedRedemption = redemptionsForReward.find(r => r.used === true);
+            const hasUsedInCourse = !!usedRedemption;
+
             const hasEnoughXp = userXp >= reward.xpCost;
+            const alreadyRedeemed = redemptionsForReward.length > 0;
+            const isZeroCostBlocked = reward.xpCost === 0 && alreadyRedeemed;
+            const isDisabled = !hasEnoughXp || redeemingId === reward.id || isZeroCostBlocked;
+
+            let buttonText = 'Resgatar Brinde';
+            if (redeemingId === reward.id) {
+              buttonText = 'Processando...';
+            } else if (hasUsedInCourse && reward.xpCost === 0) {
+              buttonText = 'Já Utilizado em Curso';
+            } else if (isZeroCostBlocked) {
+              buttonText = 'Já Resgatado';
+            } else if (!hasEnoughXp) {
+              buttonText = 'XP Insuficiente';
+            }
+
             return (
               <div key={reward.id} className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-2xl flex flex-col relative overflow-hidden group">
                 {/* Image */}
@@ -139,23 +173,47 @@ export function Store({ currentUserId, rewards, userXp, onRedeem }: StoreProps) 
                       CUPOM {reward.discountPercentage}% OFF
                     </div>
                   )}
+                  {hasUsedInCourse ? (
+                    <div className="absolute top-2 left-2 bg-emerald-950/90 backdrop-blur border border-emerald-500/40 text-emerald-400 px-2.5 py-1 rounded-md font-mono text-[10px] font-bold flex items-center gap-1 shadow-md">
+                      <CheckCircle2 size={12} className="text-emerald-400" />
+                      CUPOM JÁ USADO EM CURSO
+                    </div>
+                  ) : isZeroCostBlocked ? (
+                    <div className="absolute top-2 left-2 bg-slate-950/90 backdrop-blur border border-amber-500/30 text-amber-400 px-2.5 py-0.5 rounded-md font-mono text-[10px] font-bold">
+                      1 USO REALIZADO
+                    </div>
+                  ) : null}
                 </div>
                 
                 <h3 className="text-lg font-bold text-slate-200 mb-2">{reward.title}</h3>
-                <p className="text-xs text-slate-400 mb-6 flex-1 line-clamp-3 leading-relaxed">
+                <p className="text-xs text-slate-400 mb-4 flex-1 line-clamp-3 leading-relaxed">
                   {reward.description}
                 </p>
+
+                {hasUsedInCourse ? (
+                  <p className="text-[11px] text-emerald-400 font-mono mb-3 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                    <CheckCircle2 size={13} className="shrink-0 text-emerald-400" />
+                    <span>Você já utilizou este cupom na inscrição de um curso.</span>
+                  </p>
+                ) : isZeroCostBlocked ? (
+                  <p className="text-[11px] text-amber-400 font-mono mb-3 bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                    <AlertCircle size={12} className="shrink-0 text-amber-400" />
+                    <span>Este cupom de 0 XP só pode ser resgatado uma única vez por aluno.</span>
+                  </p>
+                ) : null}
                 
                 <button
-                  disabled={!hasEnoughXp || redeemingId === reward.id}
+                  disabled={isDisabled}
                   onClick={() => handleRedeemClick(reward)}
                   className={`w-full py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition flex items-center justify-center gap-2 ${
-                    !hasEnoughXp
+                    isZeroCostBlocked || (hasUsedInCourse && reward.xpCost === 0)
+                      ? 'bg-slate-950 border border-emerald-500/20 text-emerald-400/80 cursor-not-allowed opacity-80'
+                      : !hasEnoughXp
                       ? 'bg-slate-950 border border-slate-850 text-slate-600 cursor-not-allowed'
                       : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/20'
                   }`}
                 >
-                  {redeemingId === reward.id ? 'Processando...' : (hasEnoughXp ? 'Resgatar Brinde' : 'XP Insuficiente')}
+                  {buttonText}
                 </button>
               </div>
             );
@@ -207,25 +265,34 @@ export function Store({ currentUserId, rewards, userXp, onRedeem }: StoreProps) 
 
                     {/* Status or Coupon Code display */}
                     {red.couponCode ? (
-                      <div className="mt-2 flex items-center gap-2">
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
                         <div className="bg-slate-950 border border-slate-800 px-2.5 py-1 rounded-lg flex items-center justify-between gap-2 max-w-[220px] w-full">
-                          <span className="font-mono text-[11px] text-amber-400 font-bold tracking-wider truncate">
+                          <span className={`font-mono text-[11px] font-bold tracking-wider truncate ${red.used ? 'line-through text-slate-500' : 'text-amber-400'}`}>
                             {red.couponCode}
                           </span>
-                          <button
-                            onClick={() => handleCopyCode(red.couponCode!)}
-                            className="text-slate-400 hover:text-slate-200 transition shrink-0 p-1 rounded hover:bg-slate-900"
-                            title="Copiar código"
-                          >
-                            {copiedCode === red.couponCode ? (
-                              <Check size={12} className="text-emerald-400" />
-                            ) : (
-                              <Copy size={12} />
-                            )}
-                          </button>
+                          {!red.used && (
+                            <button
+                              onClick={() => handleCopyCode(red.couponCode!)}
+                              className="text-slate-400 hover:text-slate-200 transition shrink-0 p-1 rounded hover:bg-slate-900"
+                              title="Copiar código"
+                            >
+                              {copiedCode === red.couponCode ? (
+                                <Check size={12} className="text-emerald-400" />
+                              ) : (
+                                <Copy size={12} />
+                              )}
+                            </button>
+                          )}
                         </div>
-                        {copiedCode === red.couponCode && (
-                          <span className="text-[9px] font-semibold text-emerald-400 animate-fade-in">Copiado!</span>
+                        {red.used ? (
+                          <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 shrink-0">
+                            <CheckCircle2 size={11} />
+                            Usado em curso
+                          </span>
+                        ) : (
+                          copiedCode === red.couponCode && (
+                            <span className="text-[9px] font-semibold text-emerald-400 animate-fade-in">Copiado!</span>
+                          )
                         )}
                       </div>
                     ) : (

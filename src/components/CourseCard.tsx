@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Course, Redemption } from '../types';
 import { localDB } from '../firebase';
-import { GraduationCap, Clock, Award, MessageCircle, Share2, Twitter, Linkedin, Link, Check, Tag, Star, X, Instagram } from 'lucide-react';
+import { GraduationCap, Clock, Award, MessageCircle, Share2, Twitter, Linkedin, Link, Check, Tag, Star, X, Instagram, AlertCircle } from 'lucide-react';
 
 interface CourseCardProps {
   key?: string;
@@ -22,6 +22,7 @@ export function CourseCard({ course, isRegistered, onSelect, onEnroll, currentUs
   const [showShareOptions, setShowShareOptions] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isReviewsModalOpen, setIsReviewsModalOpen] = useState(false);
+  const [isCouponConfirmOpen, setIsCouponConfirmOpen] = useState(false);
 
   const reviewsList = (course.reviews || []).filter(r => r.approved === true);
   const reviewsCount = reviewsList.length;
@@ -73,10 +74,41 @@ export function CourseCard({ course, isRegistered, onSelect, onEnroll, currentUs
     return `https://wa.me/${rawPhone}?text=${encodeURIComponent(text)}`;
   };
 
-  const handleWhatsappClick = async () => {
+  const handleEnrollClick = (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
     if (selectedCoupon) {
-      await localDB.saveRedemption({ ...selectedCoupon, used: true });
-      setSelectedCoupon(null);
+      setIsCouponConfirmOpen(true);
+      return;
+    }
+
+    if (course.saleType === 'whatsapp') {
+      window.open(getWhatsappLink(), '_blank');
+    } else {
+      onEnroll();
+    }
+  };
+
+  const confirmAndUseCoupon = async () => {
+    if (!selectedCoupon) return;
+    const couponToUse = selectedCoupon;
+
+    // Mark coupon as used immediately
+    await localDB.saveRedemption({ ...couponToUse, used: true });
+    setSelectedCoupon(null);
+    setIsCouponConfirmOpen(false);
+
+    if (course.saleType === 'whatsapp') {
+      const defaultNumber = '5521971477755';
+      let rawPhone = course.whatsappNumber ? course.whatsappNumber.replace(/\D/g, '') : '';
+      if (!rawPhone) {
+        rawPhone = defaultNumber;
+      } else if (rawPhone.length === 10 || rawPhone.length === 11) {
+        rawPhone = '55' + rawPhone;
+      }
+      const text = `Olá! Quero me matricular no curso "${course.title}" e estou usando o cupom de desconto válido "${couponToUse.couponCode}" de ${couponToUse.discountPercentage}% de desconto. Como procedo com a inscrição?`;
+      window.open(`https://wa.me/${rawPhone}?text=${encodeURIComponent(text)}`, '_blank');
+    } else {
+      onEnroll(couponToUse);
     }
   };
 
@@ -450,22 +482,21 @@ export function CourseCard({ course, isRegistered, onSelect, onEnroll, currentUs
                   Entrar p/ Inscrição
                 </button>
               ) : course.saleType === 'whatsapp' ? (
-                <a
+                <button
                   id={`enroll-btn-${course.id}`}
-                  href={getWhatsappLink()}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={handleWhatsappClick}
-                  className="px-3 py-2 text-xs font-bold rounded-xl bg-emerald-500 text-slate-950 hover:bg-emerald-400 hover:shadow-lg hover:shadow-emerald-500/25 transition-all duration-200 flex items-center justify-center gap-1"
+                  type="button"
+                  onClick={handleEnrollClick}
+                  className="px-3 py-2 text-xs font-bold rounded-xl bg-emerald-500 text-slate-950 hover:bg-emerald-400 hover:shadow-lg hover:shadow-emerald-500/25 transition-all duration-200 flex items-center justify-center gap-1 cursor-pointer"
                 >
                   <MessageCircle size={11} className="fill-slate-950 text-slate-950 shrink-0" />
                   Inscrição
-                </a>
+                </button>
               ) : (
                 <button
                   id={`enroll-btn-${course.id}`}
-                  onClick={() => onEnroll(selectedCoupon || undefined)}
-                  className="px-3 py-2 text-xs font-semibold rounded-xl bg-emerald-500 text-slate-950 font-bold hover:bg-emerald-400 hover:shadow-lg hover:shadow-emerald-500/25 transition-all duration-200"
+                  type="button"
+                  onClick={handleEnrollClick}
+                  className="px-3 py-2 text-xs font-semibold rounded-xl bg-emerald-500 text-slate-950 font-bold hover:bg-emerald-400 hover:shadow-lg hover:shadow-emerald-500/25 transition-all duration-200 cursor-pointer"
                 >
                   Matricular
                 </button>
@@ -596,6 +627,81 @@ export function CourseCard({ course, isRegistered, onSelect, onEnroll, currentUs
                   );
                 })
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Coupon Confirmation Modal */}
+      {isCouponConfirmOpen && selectedCoupon && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999] animate-fadeIn" onClick={() => setIsCouponConfirmOpen(false)}>
+          <div className="bg-slate-900 border border-amber-500/30 rounded-2xl max-w-md w-full p-6 shadow-2xl relative space-y-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 shrink-0">
+                  <Tag size={22} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-100 leading-tight">Confirmar Uso do Cupom</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">Deseja realmente utilizar este cupom de desconto?</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCouponConfirmOpen(false)}
+                className="text-slate-500 hover:text-slate-300 transition p-1 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-3.5 bg-slate-950/80 rounded-xl border border-slate-800 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-400 font-medium">Curso:</span>
+                <span className="font-bold text-slate-200 line-clamp-1 max-w-[220px] text-right">{course.title}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-400 font-medium">Cupom Selecionado:</span>
+                <span className="font-mono font-bold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-500/20">
+                  {selectedCoupon.couponCode} (-{selectedCoupon.discountPercentage}%)
+                </span>
+              </div>
+              {course.price > 0 && (
+                <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-850">
+                  <span className="text-slate-400 font-medium">Valor Final:</span>
+                  <div className="text-right">
+                    <span className="text-[10px] text-slate-500 line-through mr-1.5 font-mono">
+                      {course.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </span>
+                    <span className="font-bold font-mono text-emerald-400 text-sm">
+                      {(course.price * (1 - (selectedCoupon.discountPercentage || 0) / 100)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl flex items-start gap-2.5 text-xs text-amber-300">
+              <AlertCircle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+              <p className="leading-relaxed">
+                <strong className="font-bold text-amber-200">Atenção:</strong> Ao confirmar, este cupom será marcado permanentemente como <span className="underline font-bold">utilizado</span> e não poderá ser reutilizado em outros cursos.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setIsCouponConfirmOpen(false)}
+                className="flex-1 py-2.5 px-4 rounded-xl border border-slate-800 bg-slate-950 hover:bg-slate-850 text-slate-300 text-xs font-bold transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmAndUseCoupon}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black uppercase tracking-wider transition cursor-pointer shadow-lg shadow-amber-500/20"
+              >
+                Confirmar e Usar
+              </button>
             </div>
           </div>
         </div>
