@@ -249,6 +249,9 @@ class StorageEngine {
             const cleanedProfile = cleanUndefined(defaultUser);
             await setDoc(userDocRef, cleanedProfile);
             console.log('Successfully registered new Gmail user in Firestore leaderboard:', user.email);
+            if (typeof window !== 'undefined') {
+              sessionStorage.setItem(`welcome_coupon_shown_${user.uid}`, 'pending');
+            }
             
             // Append locally
             const localBoard = this.getLeaderboard();
@@ -1556,7 +1559,22 @@ Dr. Gabriel e equipe Savana Experience.`);
 
   // Rewards
   getRewards(): Reward[] {
-    return this.get('rewards', []);
+    const rewardsList = this.get('rewards', []);
+    if (!rewardsList || rewardsList.length === 0) {
+      const defaultWelcomeReward: Reward = {
+        id: 'reward-welcome-coupon-0xp',
+        title: 'Cupom de Boas-Vindas (15% OFF)',
+        description: 'Cupom exclusivo para novos alunos usarem na matrícula de qualquer curso!',
+        xpCost: 0,
+        stock: 100,
+        isCoupon: true,
+        discountPercentage: 15,
+        imageUrl: 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=500&auto=format&fit=crop&q=80'
+      };
+      this.set('rewards', [defaultWelcomeReward]);
+      return [defaultWelcomeReward];
+    }
+    return rewardsList;
   }
 
   async saveReward(reward: Reward) {

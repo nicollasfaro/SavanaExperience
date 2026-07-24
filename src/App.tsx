@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Course, CourseModule, Lesson, StudentProgress, LeaderboardUser, NotificationItem, Turma, Redemption } from './types';
+import { Course, CourseModule, Lesson, StudentProgress, LeaderboardUser, NotificationItem, Turma, Redemption, Reward } from './types';
 import { localDB, auth, signInWithGmail, logoutGmail, db, signUpUserWithEmailAndPassword, signInUserWithEmailAndPassword } from './firebase';
 import { collection, addDoc, getDoc, doc } from 'firebase/firestore';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
@@ -25,7 +25,7 @@ import {
   Trophy, BookOpen, Sun, Moon, Sparkles, MessageSquare, Play, CheckCircle2, 
   HelpCircle, CreditCard, ChevronRight, Download, Calendar, ShieldCheck, Clock, 
   Settings, Award, Wifi, WifiOff, Fingerprint, Lock, CheckSquare, Bell, Shield, Gift, Menu, X,
-  Video, Search, Star
+  Video, Search, Star, Copy, Tag, Check
 } from 'lucide-react';
 
 export function SavanaLogo({ className = "w-10 h-10" }: { className?: string }) {
@@ -390,7 +390,11 @@ export default function App() {
 
     try {
       if (showRegisterForm) {
-        await signUpUserWithEmailAndPassword(fullNameForm, emailForm, passwordForm, registerAvatarFile || registerAvatar);
+        const userCred = await signUpUserWithEmailAndPassword(fullNameForm, emailForm, passwordForm, registerAvatarFile || registerAvatar);
+        const newUid = userCred?.user?.uid || auth.currentUser?.uid;
+        if (newUid) {
+          sessionStorage.setItem(`welcome_coupon_shown_${newUid}`, 'pending');
+        }
       } else {
         await signInUserWithEmailAndPassword(emailForm, passwordForm);
       }
@@ -711,6 +715,84 @@ export default function App() {
   const [biometricVerified, setBiometricVerified] = useState(true);
   const [showBiometricModal, setShowBiometricModal] = useState(false);
   const [biometricScanning, setBiometricScanning] = useState(false);
+
+  // Welcome Free Coupon Modal state for new registrations
+  const [showWelcomeCouponModal, setShowWelcomeCouponModal] = useState(false);
+  const [welcomeCouponToRedeem, setWelcomeCouponToRedeem] = useState<Reward | null>(null);
+  const [redeemedWelcomeCode, setRedeemedWelcomeCode] = useState<string | null>(null);
+  const [isRedeemingWelcome, setIsRedeemingWelcome] = useState(false);
+
+  // Check for pending Welcome Coupon prompt after new registration
+  useEffect(() => {
+    if (currentUserId && currentUserId !== 'current-user-id') {
+      const pendingKey = `welcome_coupon_shown_${currentUserId}`;
+      const pendingStatus = sessionStorage.getItem(pendingKey);
+      
+      if (pendingStatus === 'pending') {
+        const freeCoupons = rewards.filter(r => r.isCoupon && r.xpCost === 0);
+        const userRedemptions = localDB.getRedemptions().filter(red => red.userId === currentUserId);
+        const unredeemed = freeCoupons.find(c => !userRedemptions.some(r => r.rewardId === c.id));
+
+        if (unredeemed) {
+          setWelcomeCouponToRedeem(unredeemed);
+          setShowWelcomeCouponModal(true);
+        } else {
+          sessionStorage.removeItem(pendingKey);
+        }
+      }
+    }
+  }, [currentUserId, rewards]);
+
+  const handleRedeemWelcomeCoupon = async () => {
+    if (!welcomeCouponToRedeem || !currentUserId) return;
+    setIsRedeemingWelcome(true);
+
+    try {
+      const randomStr = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const couponCode = `SAVANA-${welcomeCouponToRedeem.discountPercentage || 15}OFF-${randomStr}`;
+
+      const newRedemption: Redemption = {
+        id: `red-${Date.now()}`,
+        userId: currentUserId,
+        rewardId: welcomeCouponToRedeem.id,
+        redeemedAt: new Date().toISOString(),
+        status: 'delivered',
+        couponCode,
+        discountPercentage: welcomeCouponToRedeem.discountPercentage
+      };
+
+      await localDB.saveRedemption(newRedemption);
+      setRedeemedWelcomeCode(couponCode);
+
+      // Clear pending session key
+      sessionStorage.removeItem(`welcome_coupon_shown_${currentUserId}`);
+
+      // Save notification
+      const notif: NotificationItem = {
+        id: `n-${Date.now()}`,
+        userId: currentUserId,
+        title: '🎁 Cupom de Boas-Vindas Resgatado!',
+        message: `Você resgatou o cupom "${welcomeCouponToRedeem.title}" (${welcomeCouponToRedeem.discountPercentage}% OFF). Código: ${couponCode}`,
+        type: 'course',
+        read: false,
+        createdAt: new Date().toISOString()
+      };
+      await localDB.saveNotification(notif);
+    } catch (err) {
+      console.error("Error redeeming welcome coupon:", err);
+    } finally {
+      setIsRedeemingWelcome(false);
+    }
+  };
+
+  const handleCloseWelcomeCouponModal = () => {
+    if (currentUserId) {
+      sessionStorage.removeItem(`welcome_coupon_shown_${currentUserId}`);
+    }
+    setShowWelcomeCouponModal(false);
+    setWelcomeCouponToRedeem(null);
+    setRedeemedWelcomeCode(null);
+  };
 
 
 
@@ -3636,6 +3718,135 @@ export default function App() {
           isOpen={showCertificateValidator}
           onClose={() => setShowCertificateValidator(false)}
         />
+      )}
+
+      {/* Welcome Free Coupon Modal for New Registrations */}
+      {showWelcomeCouponModal && welcomeCouponToRedeem && (
+        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-[9999] animate-fadeIn">
+          <div className="bg-slate-900 border border-emerald-500/30 rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl space-y-6 relative overflow-hidden">
+            {/* Decorative background glow */}
+            <div className="absolute -top-24 -right-24 w-48 h-48 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-amber-500/15 rounded-full blur-3xl pointer-events-none" />
+
+            {/* Header */}
+            <div className="flex items-start justify-between gap-4 relative z-10">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-gradient-to-br from-emerald-500/20 to-amber-500/20 border border-emerald-500/30 rounded-2xl text-emerald-400 shrink-0 shadow-inner">
+                  <Gift size={28} className="text-emerald-400 animate-bounce" />
+                </div>
+                <div>
+                  <span className="inline-block text-[10px] font-extrabold uppercase tracking-widest text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 mb-1">
+                    🎉 Boas-Vindas à Savana Experience
+                  </span>
+                  <h2 className="text-lg font-bold text-slate-100 leading-tight">
+                    Resgate seu Cupom Grátis (0 XP)!
+                  </h2>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseWelcomeCouponModal}
+                className="text-slate-500 hover:text-slate-300 transition p-1 cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed relative z-10">
+              Parabéns pelo seu cadastro! Como novo aluno, disponibilizamos um cupom de desconto exclusivo sem que você precise gastar nenhum ponto de XP. Resgate agora mesmo para usar na sua primeira matrícula!
+            </p>
+
+            {/* Coupon Card Details */}
+            <div className="bg-slate-950/90 border border-slate-800 rounded-2xl p-4 flex gap-4 items-center relative z-10 shadow-lg">
+              {welcomeCouponToRedeem.imageUrl ? (
+                <img
+                  src={welcomeCouponToRedeem.imageUrl}
+                  alt={welcomeCouponToRedeem.title}
+                  className="w-20 h-20 rounded-xl object-cover border border-slate-800 shrink-0"
+                />
+              ) : (
+                <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-emerald-500/20 to-amber-500/20 border border-slate-800 flex items-center justify-center shrink-0 text-emerald-400">
+                  <Tag size={32} />
+                </div>
+              )}
+
+              <div className="flex-1 space-y-1.5 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-slate-100 truncate">{welcomeCouponToRedeem.title}</span>
+                  <span className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-black rounded-lg shrink-0">
+                    -{welcomeCouponToRedeem.discountPercentage}% OFF
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
+                  {welcomeCouponToRedeem.description}
+                </p>
+                <div className="flex items-center gap-2 pt-1">
+                  <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                    Custo: 0 XP (Gratuito)
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* State: Redeemed vs Initial Action */}
+            {redeemedWelcomeCode ? (
+              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 text-center space-y-3 relative z-10 animate-fadeIn">
+                <div className="flex justify-center">
+                  <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                    <Check size={20} />
+                  </div>
+                </div>
+                <h3 className="text-sm font-bold text-emerald-300">Cupom Resgatado com Sucesso!</h3>
+                <p className="text-xs text-slate-300">
+                  Seu código de desconto exclusivo:
+                </p>
+                <div className="flex items-center justify-center gap-2 bg-slate-950 p-2.5 rounded-xl border border-emerald-500/30 font-mono font-bold text-sm text-emerald-400 tracking-wider">
+                  <span>{redeemedWelcomeCode}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(redeemedWelcomeCode);
+                      alert("Código copiado para a área de transferência!");
+                    }}
+                    className="p-1 hover:text-emerald-300 text-slate-400 transition cursor-pointer"
+                    title="Copiar código"
+                  >
+                    <Copy size={16} />
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Ao escolher um curso e clicar em <strong>Inscrição</strong>, você poderá selecionar este cupom e aplicar o desconto!
+                </p>
+                <button
+                  type="button"
+                  onClick={handleCloseWelcomeCouponModal}
+                  className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl transition shadow-lg shadow-emerald-500/20 cursor-pointer"
+                >
+                  Concluir e Ver Cursos
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row gap-3 pt-2 relative z-10">
+                <button
+                  type="button"
+                  onClick={handleCloseWelcomeCouponModal}
+                  className="flex-1 py-3 px-4 rounded-xl border border-slate-800 bg-slate-950 hover:bg-slate-850 text-slate-400 hover:text-slate-200 text-xs font-bold transition text-center cursor-pointer"
+                >
+                  Resgatar Mais Tarde
+                </button>
+                <button
+                  type="button"
+                  disabled={isRedeemingWelcome}
+                  onClick={handleRedeemWelcomeCoupon}
+                  className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-xs uppercase tracking-wider transition shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  <Gift size={16} />
+                  {isRedeemingWelcome ? 'Resgatando...' : 'Resgatar Cupom Grátis'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
     </div>
