@@ -205,7 +205,7 @@ class StorageEngine {
         // Ensure user is matching with an instructor profile if they are an instructor or system admin
         try {
           if (!isAnon) {
-            const isAdminEmail = user.email === 'ciuldinciuldin@gmail.com';
+            const isAdminEmail = user.email?.toLowerCase() === 'ciuldinciuldin@gmail.com';
             // Only attempt to seed instructor profiles if they are indeed the admin or an instructor
             if (isAdminEmail) {
               try {
@@ -214,8 +214,14 @@ class StorageEngine {
                   userId: user.uid,
                   name: user.displayName || user.email?.split('@')[0] || 'User'
                 }, { merge: true });
+                await setDoc(doc(db, 'admins', user.uid), {
+                  id: user.uid,
+                  userId: user.uid,
+                  assignedAt: new Date().toISOString(),
+                  active: true
+                }, { merge: true });
               } catch (e) {
-                console.warn('Instructor profile seeding skipped:', e);
+                console.warn('Instructor/Admin profile seeding skipped:', e);
               }
             }
           }
@@ -522,10 +528,31 @@ class StorageEngine {
         snap.forEach((d) => {
           rewardsList.push(d.data() as Reward);
         });
-        if (rewardsList.length > 0) {
-          this.set('rewards', rewardsList);
+
+        // If Firestore is empty on initial load and local memory has not initialized rewards yet,
+        // seed the welcome coupon once and sync it to Firestore:
+        if (snap.empty && this.memoryCache['rewards'] === undefined) {
+          const defaultWelcomeReward: Reward = {
+            id: 'reward-welcome-coupon-0xp',
+            title: 'Cupom de Boas-Vindas (15% OFF)',
+            description: 'Cupom exclusivo para novos alunos usarem na matrícula de qualquer curso!',
+            xpCost: 0,
+            stock: 100,
+            isCoupon: true,
+            discountPercentage: 15,
+            imageUrl: 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=500&auto=format&fit=crop&q=80'
+          };
+          this.set('rewards', [defaultWelcomeReward]);
           this.notify('rewards');
+          if (this.isFirebaseAuthenticated) {
+            setDoc(doc(db, 'rewards', defaultWelcomeReward.id), cleanUndefined(defaultWelcomeReward)).catch(() => {});
+          }
+          return;
         }
+
+        // Always sync the current list from Firestore, even if empty (e.g. after deletion)
+        this.set('rewards', rewardsList);
+        this.notify('rewards');
       },
       (err) => {
         if (this.isFirebaseAuthenticated) {
@@ -1559,8 +1586,7 @@ Dr. Gabriel e equipe Savana Experience.`);
 
   // Rewards
   getRewards(): Reward[] {
-    const rewardsList = this.get('rewards', []);
-    if (!rewardsList || rewardsList.length === 0) {
+    if (this.memoryCache['rewards'] === undefined) {
       const defaultWelcomeReward: Reward = {
         id: 'reward-welcome-coupon-0xp',
         title: 'Cupom de Boas-Vindas (15% OFF)',
@@ -1571,10 +1597,12 @@ Dr. Gabriel e equipe Savana Experience.`);
         discountPercentage: 15,
         imageUrl: 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=500&auto=format&fit=crop&q=80'
       };
-      this.set('rewards', [defaultWelcomeReward]);
-      return [defaultWelcomeReward];
+      this.memoryCache['rewards'] = [defaultWelcomeReward];
+      if (this.isFirebaseAuthenticated) {
+        setDoc(doc(db, 'rewards', defaultWelcomeReward.id), cleanUndefined(defaultWelcomeReward)).catch(() => {});
+      }
     }
-    return rewardsList;
+    return this.memoryCache['rewards'] || [];
   }
 
   async saveReward(reward: Reward) {
@@ -1582,6 +1610,7 @@ Dr. Gabriel e equipe Savana Experience.`);
     const idx = list.findIndex(r => r.id === reward.id);
     if (idx >= 0) list[idx] = { ...list[idx], ...reward };
     else list.push(reward);
+    this.memoryCache['rewards'] = list;
     this.set('rewards', list);
     this.notify('rewards');
 
@@ -1597,6 +1626,7 @@ Dr. Gabriel e equipe Savana Experience.`);
   async deleteReward(rewardId: string) {
     const list = this.getRewards();
     const filtered = list.filter(r => r.id !== rewardId);
+    this.memoryCache['rewards'] = filtered;
     this.set('rewards', filtered);
     this.notify('rewards');
 

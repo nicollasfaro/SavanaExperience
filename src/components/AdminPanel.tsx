@@ -611,9 +611,11 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
         setConfirmConfig(null);
         try {
           await localDB.deleteReward(r.id);
-          showToast("Recompensa removida!");
-        } catch(err) {
-          showToast("Falha ao remover.", "error");
+          setRewards(prev => prev.filter(item => item.id !== r.id));
+          showToast("Recompensa removida com sucesso!", "success");
+        } catch(err: any) {
+          console.error("Erro ao remover recompensa:", err);
+          showToast("Falha ao remover: " + (err?.message || "Tente novamente"), "error");
         }
       }
     });
@@ -2106,10 +2108,19 @@ export function AdminPanel({ allUsers, onUpdateRole, currentUserId, courses: ini
                   </div>
 
                   <div className="flex gap-2 w-full mt-auto">
-                    <button onClick={() => handleOpenEditReward(r)} className="flex-1 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-blue-400 py-1.5 rounded-lg text-[10px] font-bold uppercase transition flex items-center justify-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditReward(r)}
+                      className="flex-1 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-blue-400 py-1.5 rounded-lg text-[10px] font-bold uppercase transition flex items-center justify-center gap-1 cursor-pointer"
+                    >
                       <Edit size={12}/> Editar
                     </button>
-                    <button onClick={() => handleDeleteReward(r)} className="bg-slate-900 hover:bg-red-500/10 border border-slate-800 hover:border-red-500/30 text-red-500 py-1.5 px-3 rounded-lg text-[10px] uppercase font-bold transition flex items-center justify-center">
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteReward(r)}
+                      title="Excluir Recompensa"
+                      className="bg-slate-900 hover:bg-red-500/10 border border-slate-800 hover:border-red-500/30 text-red-500 hover:text-red-400 py-1.5 px-3 rounded-lg text-[10px] uppercase font-bold transition flex items-center justify-center cursor-pointer"
+                    >
                       <Trash2 size={12}/>
                     </button>
                   </div>

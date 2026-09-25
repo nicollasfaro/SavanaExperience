@@ -26,7 +26,7 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn() && (
-        request.auth.token.email == "ciuldinciuldin@gmail.com" ||
+        (request.auth.token.email != null && request.auth.token.email.lower() == "ciuldinciuldin@gmail.com") ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
     }
@@ -36,7 +36,10 @@ service cloud.firestore {
       return isSignedIn() && (
         isAdmin() ||
         exists(/databases/$(database)/documents/instructors/$(request.auth.uid)) ||
-        (exists(/databases/$(database)/documents/leaderboard/$(request.auth.uid)) && get(/databases/$(database)/documents/leaderboard/$(request.auth.uid)).data.role == 'instructor')
+        (exists(/databases/$(database)/documents/leaderboard/$(request.auth.uid)) && (
+          get(/databases/$(database)/documents/leaderboard/$(request.auth.uid)).data.role == 'instructor' ||
+          get(/databases/$(database)/documents/leaderboard/$(request.auth.uid)).data.role == 'admin'
+        ))
       );
     }
 
@@ -238,7 +241,7 @@ service cloud.firestore {
       allow create: if isInstructor() && isValidReward(incoming()) && incoming().id == rewardId;
       allow update: if (isInstructor() && isValidReward(incoming()) && incoming().id == rewardId) 
                     || (isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['stock']) && incoming().stock >= 0);
-      allow delete: if isInstructor();
+      allow delete: if isInstructor() || isAdmin();
     }
 
     // 15. REWARD REDEMPTIONS
